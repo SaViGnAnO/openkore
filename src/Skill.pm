@@ -75,7 +75,9 @@ use constant {
 # Owner type constants. See $Skill->getOwnerType() for description.
 use enum qw(OWNER_CHAR OWNER_HOMUN OWNER_MERC);
 
-use overload '""' => \&_nameString;
+use overload 
+	fallback => 1,
+	'""' => \&_nameString;
 sub _nameString { $_[0]->getName }
 
 ##
@@ -206,7 +208,7 @@ sub getLevel {
 # Returns the SP required for level $level of this skill, or undef if that's unknown.
 sub getSP {
 	my ($self, $level) = @_;
-	assert($level > 0) if DEBUG;
+	assert($level > 0, "Can't get SP cost of skill with level below zero (lvl: $level)") if DEBUG;
 
 	my $targetType = $self->getTargetType();
 	if (defined $targetType && $targetType == TARGET_PASSIVE) {

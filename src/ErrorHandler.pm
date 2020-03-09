@@ -56,15 +56,15 @@ sub errorHandler {
 	$errorMessage =~ s/[\r\n]+$//s;
 
 	# Create the message to be displayed to the user.
-	my $display = TF("This program has encountered an unexpected problem. This is probably because\n" .
-	                 "of a recent server update, a bug in this program, or in one of the plugins.\n" .
+	my $display = TF("This program has encountered an unexpected problem. This is probably because " .
+	                 "of a recent server update, a bug in this program, or in one of the plugins. " .
 	                 "We apologize for this problem. You may get support from IRC or the forums.\n\n" .
-	                 "A detailed error report has been saved to errors.txt. Before posting a bug\n" . 
-	                 "report, please try out the SVN version first. If you are already using the SVN\n" . 
-	                 "version, search the forums first to see if your problem had already been solved,\n" . 
-	                 "or has already been reported. If you truly believe you have encountered a bug in\n" .
-	                 "the program, please include the contents of the errors.txt in your bug report,\n" .
-	                 "or we may not be able to help you!\n\n" .
+	                 "A detailed error report has been saved to errors.txt. Before posting a bug " . 
+	                 "report, please try out the latest release GIT version first. If you are already using the latest release GIT " . 
+	                 "version, search the forums first to see if your problem had already been solved, " . 
+	                 "or has already been reported. If you truly believe you have encountered a bug in " .
+	                 "the program, please include the contents of the errors.txt in your bug report " .
+	                 "(https://github.com/openkore/openkore/issues), or we may not be able to help you!\n\n" .
 	                 "The error message is:\n" .
 	                 "%s",
 	                 $errorMessage);
@@ -75,12 +75,7 @@ sub errorHandler {
 	$log .= "\@ai_seq = @Globals::ai_seq\n" if (@Globals::ai_seq);
 	$log .= "Network state = $Globals::conState\n" if (defined $Globals::conState);
 	$log .= "Network handler = " . Scalar::Util::blessed($Globals::net) . "\n" if ($Globals::net);
-	my $revision = defined(&Settings::getSVNRevision) ? Settings::getSVNRevision() : undef;
-	if (defined $revision) {
-		$log .= "SVN revision: $revision\n";
-	} else {
-		$log .= "SVN revision: unknown\n";
-	}
+	$log .= "Revision: " . Settings::getRevisionString() . "\n";
 	if (@Plugins::plugins) {
 		$log .= "Loaded plugins:\n";
 		foreach my $plugin (@Plugins::plugins) {

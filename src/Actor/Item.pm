@@ -87,15 +87,15 @@ our @slots = qw(
 # Creates a new Actor::Item object.
 sub new {
 	my $class = $_[0];
-	my $self = $class->SUPER::new('Item');
+	my $self = $class->SUPER::new(T('Item'));
 	$self->{name} = 'Uninitialized Item';
-	$self->{index} = 0;
+	$self->{ID} = 0;
 	$self->{amount} = 0;
 	$self->{type} = 0;
 	$self->{equipped} = 0;
 	$self->{identified} = 0;
 	$self->{nameID} = 0;
-	$self->{invIndex} = -1;
+	$self->{binID} = -1;
 	return $self;
 }
 
@@ -106,7 +106,7 @@ sub new {
 
 ##
 # Actor::Item::get(name, skipIndex, notEquipped)
-# item: can be either an object itself, an ID or a name.
+# item: can be either an object itself, an binID or a name.
 # skipIndex: tells this function to not select a certain item (used for getting another item with the same name).
 # notEquipped: 1 = not equipped item; 0 = equipped item; undef = all item
 # Returns: an Actor::Item object, or undef if not found or parameters not matched.
@@ -127,12 +127,12 @@ sub get {
 	} else {
 		my $condition;
 		if ($notEquipped) {
-			# making sure that $skipIndex is defined:  when perl is expecting a number and gets an undef instead, it will transform that value into 0, wich is a possible invIndex here
-			$condition = sub { ($_[0]->{invIndex} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name && !$_[0]->{equipped} };
+			# making sure that $skipIndex is defined:  when perl is expecting a number and gets an undef instead, it will transform that value into 0, wich is a possible binID here
+			$condition = sub { ($_[0]->{binID} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name && !$_[0]->{equipped} };
 		} elsif (!$notEquipped && defined($notEquipped)) {
-			$condition = sub { ($_[0]->{invIndex} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name && $_[0]->{equipped} };
+			$condition = sub { ($_[0]->{binID} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name && $_[0]->{equipped} };
 		} else {
-			$condition = sub { ($_[0]->{invIndex} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name };
+			$condition = sub { ($_[0]->{binID} != $skipIndex || !defined $skipIndex) && $_[0]->{name} eq $name };
 		}
 		return $char->inventory->getByCondition($condition);
 	}
@@ -184,14 +184,20 @@ sub bulkEquip {
 		my $skipIndex;
 		$skipIndex = $rightHand if ($_ eq 'leftHand');
 		$skipIndex = $rightAccessory if ($_ eq 'leftAccessory');
-		$item = Actor::Item::get($list->{$_}, $skipIndex, 1);
-
-		next unless ($item && $char->{equipment} && (!$char->{equipment}{$_} || $char->{equipment}{$_}{name} ne $item->{name}));
-
-		$item->equipInSlot($_);
 		
-		$rightHand = $item->{invIndex} if ($_ eq 'rightHand');
-		$rightAccessory = $item->{invIndex} if ($_ eq 'rightAccessory');
+		if ($list->{$_} eq "[NONE]") {
+			next unless ($char->{equipment} && $char->{equipment}{$_});
+			$char->{equipment}{$_}->unequip();
+		} else {
+			$item = Actor::Item::get($list->{$_}, $skipIndex, 1);
+
+			next unless ($item && $char->{equipment} && (!$char->{equipment}{$_} || $char->{equipment}{$_}{name} ne $item->{name}));
+
+			$item->equipInSlot($_);
+			
+			$rightHand = $item->{binID} if ($_ eq 'rightHand');
+			$rightAccessory = $item->{binID} if ($_ eq 'rightAccessory');
+		}
 	}
 }
 
@@ -234,8 +240,12 @@ sub scanConfigAndCheck {
 	my $count = 0;
 	foreach my $slot (values %equipSlot_lut) {
 		if (exists $config{"${prefix}_$slot"}){
-			my $item = Actor::Item::get($config{"${prefix}_$slot"}, undef, 1);
-			$count++ if ($item && $char->{equipment} && (!$char->{equipment}{$slot} || $char->{equipment}{$slot}{name} ne $item->{name}));
+			if ($config{"${prefix}_$slot"} eq "[NONE]") {
+				$count++ if ($char->{equipment} && $char->{equipment}{$slot});
+			} else {
+				my $item = Actor::Item::get($config{"${prefix}_$slot"}, undef, 1);
+				$count++ if ($item && $char->{equipment} && (!$char->{equipment}{$slot} || $char->{equipment}{$slot}{name} ne $item->{name}));
+			}
 		}
 	}
 	return $count;
@@ -284,7 +294,7 @@ sub UnEquipByType {
 # The name for this item.
 
 ##
-# int $ActorItem->{index}
+# int $ActorItem->{ID}
 # Invariant: value >= 0
 #
 # The index of this item in the inventory, as stored on the RO server. It is usually
@@ -292,7 +302,7 @@ sub UnEquipByType {
 # to the RO server.
 # This index does not necessarily equals the inventory index, as stored by OpenKore.
 #
-# See also: $ActorItem->{invIndex}
+# See also: $ActorItem->{binID}
 
 ##
 # int $ActorItem->{amount}
@@ -324,12 +334,12 @@ sub UnEquipByType {
 # Use this in combination with %items_lut to retrieve the item name.
 
 ##
-# int $ActorItem->{invIndex}
+# int $ActorItem->{binID}
 #
 # The index of this item in the inventory data structure, as stored by OpenKore.
 # This index does not necessarily correspond with the index as stored by the RO server.
 #
-# See also: $ActorItem->{index}
+# See also: $ActorItem->{ID}
 
 ##
 # Bytes $ActorItem->{takenBy}
@@ -347,7 +357,7 @@ sub UnEquipByType {
 # Returns: the item name, in the form of "My Item [number of slots]".
 sub nameString {
 	my $self = shift;
-	return "$self->{name} ($self->{invIndex})";
+	return "$self->{name} ($self->{binID})";
 }
 
 ##
@@ -386,7 +396,7 @@ sub equippedInSlot {
 sub equip {
 	my $self = shift;
 	return 1 if $self->{equipped};
-	$messageSender->sendEquip($self->{index}, $self->{type_equip});
+	$messageSender->sendEquip($self->{ID}, $self->{type_equip});
 	queueEquip(1);
 	return 0;
 }
@@ -398,7 +408,7 @@ sub equip {
 sub unequip {
 	my $self = shift;
 	return 1 unless $self->{equipped};
-	$messageSender->sendUnequip($self->{index});
+	$messageSender->sendUnequip($self->{ID});
 	return 0;
 }
 
@@ -418,7 +428,7 @@ sub use {
 		return 0;
 	}
 
-	$messageSender->sendItemUse($self->{index}, !$target?$accountID:$target);
+	$messageSender->sendItemUse($self->{ID}, !$target?$accountID:$target);
 	return 1;
 }
 
@@ -438,7 +448,7 @@ sub equipInSlot {
 		error TF("Inventory Item: %s is already equipped in slot: %s\n", $self->{name}, $slot);
 		return 1;
 	}
-	$messageSender->sendEquip($self->{index}, $equipSlot_rlut{$slot});
+	$messageSender->sendEquip($self->{ID}, $equipSlot_rlut{$slot});
 	queueEquip(1);
 	return 0;
 }
@@ -459,8 +469,19 @@ sub unequipFromSlot {
 		error TF("No such equipped Inventory Item: %s in slot: %s\n", $self->{name}, $slot);
 		return 1;
 	}
-	$messageSender->sendUnequip($self->{index});
+	$messageSender->sendUnequip($self->{ID});
 	return 0;
 }
+
+##
+# void $ActorItem->weight()
+#
+# Returns item's weight, or undef if the weight is not known.
+# Depends on a plugin to implement the 'get_item_weight' hook.
+sub weight {
+	my ( $self ) = @_;
+	Plugins::callHook( 'get_item_weight', $self ) if !defined $self->{weight};
+	$self->{weight};
+};
 
 1;

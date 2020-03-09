@@ -34,7 +34,7 @@ use enum qw(KNOWN_MESSAGE UNKNOWN_MESSAGE ACCOUNT_ID);
 # Create a new Network::MessageTokenizer object.
 sub new {
 	my ($class, $rpackets) = @_;
-	assert(defined $rpackets) if DEBUG;
+	assert(defined $rpackets, "Can't create new MessageTokenizer with undef packet length database (\$rpackets is undefined)") if DEBUG;
 	#Log::warning (Data::Dumper::Dumper($rpackets)."\n");
 	my %self = (
 		
@@ -51,7 +51,7 @@ sub new {
 # Add raw data to this tokenizer's buffer.
 sub add {
 	my ($self, $data) = @_;
-	assert(defined $data) if DEBUG;
+	assert(defined $data, "Can't add undefined data to MessageTokenizer buffer") if DEBUG;
 	$self->{buffer} .= $data;
 }
 
@@ -180,13 +180,29 @@ sub slicePacket {
 	my $switch = getMessageID($data);
 	my $real_length = $self->{rpackets}{$switch}{length};	
 	my $packet;
+
 	if (($real_length > 0) # packet size is not variable
-			&& (length($data) > $real_length)) { 
-		$packet = substr($data, 0, $real_length);
-		$$additional_data = substr($data, $real_length); # sliced data
-	} else { # packet is at correct size
+			&& (length($data) >= $real_length)) { 
+		if (length($data) > $real_length) {
+			$packet = substr($data, 0, $real_length);
+			$$additional_data = substr($data, $real_length); # sliced data
+		} else {
+			$packet = $data;
+			$$additional_data = undef;
+		}
+	} else { # packet is at correct size?
 		$packet = $data;
 		$$additional_data = undef;
+		if (length($data) > 4) {
+			my $packet_length = unpack("v", substr($data, 2, 2));
+			if ($packet_length > 4 && length($data) > $packet_length) {
+				my $next_data = substr($data, $packet_length);
+				if (length($next_data) > 1) {
+					$packet = substr($data, 0, $packet_length);
+					$$additional_data = $next_data;
+				}
+			}		
+		}
 	}
 	return $packet; # real packet
 }

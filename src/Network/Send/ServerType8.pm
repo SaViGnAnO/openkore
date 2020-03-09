@@ -18,16 +18,31 @@
 package Network::Send::ServerType8;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType0;
 use base qw(Network::Send::ServerType0);
-use Log qw(message warning error debug);
+
+use Globals qw($char $masterServer $syncSync);
+use Log qw(debug);
 use I18N qw(stringToBytes);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
-	return $class->SUPER::new(@_);
+	my $self = $class->SUPER::new(@_);
+
+	my %packets = (
+		'0193' => ['storage_close'],
+	);
+
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		storage_close 0193
+	);
+	
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
+	return $self;
 }
 
 sub sendMove {
@@ -209,21 +224,14 @@ sub sendSkillUseLoc {
 
 sub sendStorageAdd {
 	my ($self, $index, $amount) = @_;
-	my $msg = pack("v1 x5 v1 x1 V1", 0x94, $index, $amount);
+	my $msg = pack("v1 x5 a2 x1 V1", 0x94, $index, $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Add: $index x $amount\n", "sendPacket", 2;
 }
 
-sub sendStorageClose {
-	my ($self) = @_;
-	my $msg = pack("C*", 0x93, 0x01);
-	$self->sendToServer($msg);
-	debug "Sent Storage Done\n", "sendPacket", 2;
-}
-
 sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
-	my $msg = pack("v1 x12 v1 x2 V1", 0xf7, $index, $amount);
+	my $msg = pack("v1 x12 a2 x2 V1", 0xf7, $index, $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Get: $index x $amount\n", "sendPacket", 2;
 }
@@ -248,7 +256,7 @@ sub sendTake {
 	debug "Sent take\n", "sendPacket", 2;
 }
 
-sub sendHomunculusMove {
+sub sendSlaveMove {
 	my $self = shift;
 	my $homunID = shift;
 	my $x = int scalar shift;

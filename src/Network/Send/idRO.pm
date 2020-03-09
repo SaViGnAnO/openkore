@@ -14,18 +14,16 @@
 package Network::Send::idRO;
 
 use strict;
-use Globals;
 use Network::Send::ServerType0;
+
 use base qw(Network::Send::ServerType0);
-use Log qw(error debug);
-use I18N qw(stringToBytes);
-use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
 	my $self = $class->SUPER::new(@_);
-	
+
 	my %handlers = qw(
+		send_equip 0998
 		storage_password 023B
 		sync 0360
 		character_move 035F
@@ -38,18 +36,11 @@ sub new {
 		skill_use_location 0366
 		party_setting 07D7
 		buy_bulk_vender 0801
-		send_equip 0998
+		char_delete2_accept 098F
 	);
 	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
 	
 	return $self;
-}
-
-sub sendCharDelete {
-	my ($self, $charID, $email) = @_;
-	my $msg = pack("C*", 0xFB, 0x01) .
-			$charID . pack("a50", stringToBytes($email));
-	$self->sendToServer($msg);
 }
 
 1;

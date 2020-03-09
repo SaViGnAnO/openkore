@@ -19,17 +19,32 @@
 package Network::Send::ServerType14;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType0;
 use Network::PaddedPackets;
 use base qw(Network::Send::ServerType0);
-use Log qw(message warning error debug);
+
+use Globals qw($char $masterServer $syncSync);
+use Log qw(debug);
 use I18N qw(stringToBytes);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
-	return $class->SUPER::new(@_);
+	my $self = $class->SUPER::new(@_);
+
+	my %packets = (
+		'0116' => ['storage_close'],
+	);
+
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		storage_close 0116
+	);
+	
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
+	return $self;
 }
 
 sub sendAction {
@@ -158,7 +173,7 @@ sub sendStorageAdd {
 	my ($self, $index, $amount) = @_;
 	my $msg;
 	
-	$msg = pack("C2 x2 v1 V1", 0x13, 0x01, $index, $amount);
+	$msg = pack("C2 x2 a2 V1", 0x13, 0x01, $index, $amount);
 	
 	$self->sendToServer($msg);
 	debug "Sent Storage Add: $index x $amount\n", "sendPacket", 2;
@@ -168,7 +183,7 @@ sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
 	my $msg;
 
-	$msg = pack("C2 V1 v1 x2", 0x9B, 0x00, $amount, $index);
+	$msg = pack("C2 V1 a2 x2", 0x9B, 0x00, $amount, $index);
 	
 	$self->sendToServer($msg);
 	debug "Sent Storage Get: $index x $amount\n", "sendPacket", 2;

@@ -94,6 +94,7 @@ sub OnInit {
 		['mainLoop_pre',                        sub { $self->onUpdateUI(); }],
 		['captcha_file',                        sub { $self->onCaptcha(@_); }],
 		['packet/minimap_indicator',            sub { $self->onMapIndicator (@_); }],
+		['start3',                              sub { $interface->{mapViewer}->parsePortals(); }],
 		
 		# stat changes
 		['packet/map_changed',                  sub { $self->onSelfStatChange (@_); $self->onSlaveStatChange (@_); $self->onPetStatChange (@_); }],
@@ -457,9 +458,7 @@ sub createMenuBar {
 	$self->addMenu($infoMenu, T('&Monsters').'	Alt-M',	sub { Commands::run("ml"); });
 	$self->addMenu($infoMenu, T('&NPCs'),		sub { Commands::run("nl"); });
 	$infoMenu->AppendSeparator;
-	$self->addMenu($infoMenu, T('&Experience Report'),	sub {
-		$self->openWindow (T('Report'), 'Interface::Wx::StatView::Exp', 1) 
-	});
+	$self->addMenu($infoMenu, T('&Experience Report'),	sub { Commands::run("exp"); });
 	$self->addMenu($infoMenu, T('&Item Change Report'),	sub { Commands::run("exp item"); });
 	$self->addMenu($infoMenu, T('&Monsiter Kill Report'),	sub { Commands::run("exp monster"); });
 	$menu->Append($infoMenu, T('I&nfo'));
@@ -562,17 +561,17 @@ sub createMenuBar {
 	$self->{friendMenu} = new Wx::Menu;
 	$self->addMenu($self->{friendMenu}, T('Friend list'), sub {Commands::run("friend")}, 'Friend list');
 	$self->{friendMenu}->AppendSeparator;
-	$self->addMenu($self->{friendMenu}, T('Auto accept friend request'), sub {Commands::run("friend accept")}, 'Auto accept all incoming friend requests');
-	$self->addMenu($self->{friendMenu}, T('Auto reject friend request'), sub {Commands::run("friend reject")}, 'Auto reject all incoming friend requests');
+	$self->addMenu($self->{friendMenu}, T('Auto accept friend request'), sub {Commands::run("friend accept")}, T('Auto accept all incoming friend requests'));
+	$self->addMenu($self->{friendMenu}, T('Auto reject friend request'), sub {Commands::run("friend reject")}, T('Auto reject all incoming friend requests'));
 	$commandMenu->AppendSubMenu($self->{friendMenu}, T('&Friend'), T('Friend'));
 	
 	#Guild menu
 	$self->{guildMenu} = new Wx::Menu;
-	$self->addMenu($self->{guildMenu}, T('Guild information'), sub {Commands::run("guild info")}, 'Guild information');
-	$self->addMenu($self->{guildMenu}, T('Guild member'), sub {Commands::run("guild member")}, 'Guild memberinformation');
+	$self->addMenu($self->{guildMenu}, T('Guild information'), sub {Commands::run("guild info")}, T('Guild information'));
+	$self->addMenu($self->{guildMenu}, T('Guild member'), sub {Commands::run("guild member")}, T('Guild memberinformation'));
 	$self->{guildMenu}->AppendSeparator;
-	$self->addMenu($self->{guildMenu}, T('Auto accept guild request'), sub {Commands::run("guild join 1")}, 'Auto accept all incoming guild requests');
-	$self->addMenu($self->{guildMenu}, T('Auto reject guild request'), sub {Commands::run("guild join 0")}, 'Auto reject all incoming guild requests');
+	$self->addMenu($self->{guildMenu}, T('Auto accept guild request'), sub {Commands::run("guild join 1")}, T('Auto accept all incoming guild requests'));
+	$self->addMenu($self->{guildMenu}, T('Auto reject guild request'), sub {Commands::run("guild join 0")}, T('Auto reject all incoming guild requests'));
 	$commandMenu->AppendSubMenu($self->{guildMenu}, T('&Guild'), T('Guild'));
 	
 	$commandMenu->AppendSeparator;
@@ -766,7 +765,7 @@ sub createSplitterContent {
 
 	## Inside this splitter is a player/monster/item list, and a dock with map viewer
 
-	my $itemList = $self->{itemList} = new Interface::Wx::ItemList($subSplitter);
+	my $itemList = $self->{itemList} = new Interface::Wx::ItemList($subSplitter, T('Players, Monsters & Items'));
 	$itemList->onActivate(\&onItemListActivate, $self);
 	$self->customizeItemList($itemList) if ($self->can('customizeItemList'));
 	$subSplitter->Initialize($itemList);
@@ -796,7 +795,6 @@ sub createSplitterContent {
 	$mapView->onMouseMove(\&onMapMouseMove, $self);
 	$mapView->onClick(\&onMapClick, $self);
 	$mapView->onMapChange(\&onMap_MapChange, $mapDock);
-	$mapView->parsePortals(Settings::getTableFilename("portals.txt"));
 	if ($field && $char) {
 		$mapView->set($field->baseName, $char->{pos_to}{x}, $char->{pos_to}{y}, $field);
 	}
@@ -880,7 +878,7 @@ sub updateStatusBar {
 	if ($conState == 5) {
 		$xyText = "$char->{pos_to}{x}, $char->{pos_to}{y}";
 
-		if ($AI) {
+		if (AI::state) {
 			if (@ai_seq) {
 				my @seqs = @ai_seq;
 				foreach (@seqs) {
@@ -938,7 +936,7 @@ sub updateMapViewer {
 	}
 	
 	$map->setPlayers ([values %players]);
-	$map->setParty ([values %{$char->{party}{users}}]) if $char->{party} && $char->{party}{users};
+	$map->setParty ([values %{$char->{party}{users}}]) if $char->{party}{joined} && $char->{party}{users};
 	$map->setMonsters ([values %monsters]);
 	$map->setNPCs ([values %npcs]);
 	$map->setSlaves ([values %slaves]);
@@ -965,17 +963,17 @@ sub updateItemList {
 			$self->{spBar}->SetForegroundColour (new Wx::Colour ((100 - $value) * 2.55, $value * 1.27, 50));
 		}
 		if ($char->{exp_max}) {
-			$value = $char->{exp} / $char->{exp_max} * 100;
+			$value = $char->exp_base_percent;
 			$self->{expBar}->SetValue ($value);
 			$self->{expBar}->SetToolTip (sprintf '%s / %s (%.2f%)', formatNumber ($char->{exp}), formatNumber ($char->{exp_max}), $value);
 		}
 		if ($char->{exp_job_max}) {
-			$value = $char->{exp_job} / $char->{exp_job_max} * 100;
+			$value = $char->exp_job_percent;
 			$self->{jobExpBar}->SetValue ($value);
 			$self->{jobExpBar}->SetToolTip (sprintf '%s / %s (%.2f%)', formatNumber ($char->{exp_job}), formatNumber ($char->{exp_job_max}), $value);
 		}
 		if ($char->{weight_max}) {
-			$value = $char->{weight} / $char->{weight_max} * 100;
+			$value = $char->weight_percent;
 			$self->{weightBar}->SetValue ($value);
 			$self->{weightBar}->SetToolTip (sprintf '%s / %s (%.2f%)', formatNumber ($char->{weight}), formatNumber ($char->{weight_max}), $value);
 			if ($char->statusActive('EFST_WEIGHTOVER90')) {
@@ -1027,9 +1025,9 @@ sub onInputEnter {
 
 sub onMenuOpen {
 	my $self = shift;
-	$self->{mPause}->Enable($AI != AI::OFF);
-	$self->{mManual}->Enable($AI != AI::MANUAL);
-	$self->{mResume}->Enable($AI != AI::AUTO);
+	$self->{mPause}->Enable(AI::state != AI::OFF);
+	$self->{mManual}->Enable(AI::state != AI::MANUAL);
+	$self->{mResume}->Enable(AI::state != AI::AUTO);
 	$self->{infoBarToggle}->Check($self->{infoPanel}->IsShown);
 	$self->{chatLogToggle}->Check(defined $self->{notebook}->hasPage(T('Chat Log')) ? 1 : 0);
 	
@@ -1059,15 +1057,15 @@ sub onLoadFiles {
 }
 
 sub onEnableAI {
-	$AI = AI::AUTO;
+	AI::state(AI::AUTO);
 }
 
 sub onManualAI {
-	$AI = AI::MANUAL;
+	AI::state(AI::MANUAL);
 }
 
 sub onDisableAI {
-	$AI = AI::OFF;
+	AI::state(AI::OFF);
 }
 
 sub onCopyLastOutput {
@@ -1420,22 +1418,28 @@ sub onMapMouseMove {
 
 		foreach my $portal (@{$self->{mapViewer}->{portals}->{$field->baseName}}) {
 			if (distance($portal,{x=>$x,y=>$y}) <= ($config{wx_map_portalSticking} || 5)) {
-					$self->{mouseMapText} = TF("Portal at %s %s  -  Destination: %s, at %s %s", $x, $y, $portal->{destination}{field}, $portal->{destination}{x}, $portal->{destination}{y});
+					if ($portal->{npcType}) {
+						# this is a Warp NPC
+						$self->{mouseMapText} = TF("Warp NPC at %d %d", $x, $y);
+					} else {
+						# this is a portal
+						$self->{mouseMapText} = TF("Portal at %d %d  -  Destination: %s, at %d %d", $x, $y, $portal->{destination}{field}, $portal->{destination}{x}, $portal->{destination}{y});
+					}
 				}
 			}
 		foreach my $monster (@{$self->{mapViewer}->{monsters}}) {
 			if (distance($monster->{pos},{x=>$x,y=>$y}) <= ($config{wx_map_monsterSticking} || 1)) {
-				$self->{mouseMapText} = TF("%s at %s, %s", Actor::get($monster->{ID}), $x, $y);
+				$self->{mouseMapText} = TF("%s at %d, %d", Actor::get($monster->{ID}), $x, $y);
 			}
 		}
 		foreach my $players (@{$self->{mapViewer}->{players}}) {
 			if (distance($players->{pos},{x=>$x,y=>$y}) <= ($config{wx_map_playersSticking} || 1)) {
-				$self->{mouseMapText} = TF("%s at %s, %s  -  Class: %s", Actor::get($players->{ID}), $x, $y, $jobs_lut{$players->{jobID}});
+				$self->{mouseMapText} = TF("%s at %d, %d  -  Class: %s", Actor::get($players->{ID}), $x, $y, $jobs_lut{$players->{jobID}});
 			}
 		}
 		foreach my $npc (@{$self->{mapViewer}->{npcs}}){
 			if (distance($npc->{pos},{x=>$x,y=>$y}) <= ($config{wx_map_npcSticking} || 1)) {
-				$self->{mouseMapText} = TF("%s at %s, %s", Actor::get($npc->{ID}), $x, $y);
+				$self->{mouseMapText} = TF("%s at %d, %d", Actor::get($npc->{ID}), $x, $y);
 			}
 		}
 	} else {

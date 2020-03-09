@@ -31,14 +31,15 @@ use Text::Balanced qw(extract_delimited);
 use Utils;
 use Utils::TextReader;
 use Plugins;
+use Settings;
 use Log qw(warning error debug);
 use Translation qw/T TF/;
 
 our @EXPORT = qw(
+	parseAttendanceRewards
 	parseArrayFile
 	parseAvoidControl
 	parseChatResp
-	parseCommandsDescription
 	parseConfigFile
 	parseDataFile
 	parseDataFile_lc
@@ -62,6 +63,7 @@ our @EXPORT = qw(
 	parseSkillsSPLUT
 	parseTimeouts
 	parseWaypoint
+	parseItemStackLimit
 	processUltimate
 	writeDataFile
 	writeDataFileIntact
@@ -78,10 +80,11 @@ our @EXPORT = qw(
 sub parseArrayFile {
 	my $file = shift;
 	my $r_array = shift;
+	my $options = shift;
 	undef @{$r_array};
 
 	my @lines;
-	my $reader = new Utils::TextReader($file);
+	my $reader = new Utils::TextReader($file, $options);
 	while (!$reader->eof()) {
 		my $line = $reader->readLine();
 		$line =~ s/[\r\n\x{FEFF}]//g;
@@ -159,7 +162,7 @@ sub parseChatResp {
 	}
 	return 1;
 }
-
+=pod
 sub parseCommandsDescription {
 	my $file = shift;
 	my $r_hash = shift;
@@ -167,7 +170,7 @@ sub parseCommandsDescription {
 
 	undef %{$r_hash} unless $no_undef;
 	my ($key, $commentBlock, $description);
-	
+
 	my $reader = new Utils::TextReader($file);
 	while (!$reader->eof()) {
 		my $line = $reader->readLine();
@@ -200,15 +203,15 @@ sub parseCommandsDescription {
 
 		} elsif ($line =~ /^(.*?)\t+(.*)$/) {
 			push @{$r_hash->{$key}}, [$1, $2];
-		
+
 		} elsif ($line !~ /\t/) {	#if a console command is without any params
 			push @{$r_hash->{$key}}, ["", $line];
 		}
-		
+
 	}
 	return 1;
 }
-
+=cut
 sub parseConfigFile {
 	my $file = shift;
 	my $r_hash = shift;
@@ -217,7 +220,7 @@ sub parseConfigFile {
 
 	undef %{$r_hash} unless $no_undef;
 	my ($key, $value, $inBlock, $commentBlock);
-	
+
 	my $reader = new Utils::TextReader($file);
 	while (!$reader->eof()) {
 		my $line = $reader->readLine();
@@ -226,6 +229,13 @@ sub parseConfigFile {
 		$line =~ s/[\r\n]//g;	# Remove line endings
 		$line =~ s/^[\t\s]*//;	# Remove leading tabs and whitespace
 		$line =~ s/\s+$//g;	# Remove trailing whitespace
+
+		if (index($line, '#') != -1) {
+			warning T("Mid-line comments are not allowed in this file and therefore might cause problems.\n"), "parseConfigFile", 5;
+			warning T("If the '#' found is not a comment, this can be ignored.\n"), "parseConfigFile", 5;
+			warning TF("HERE: %s", $line), "parseConfigFile", 5;
+		}
+
 		next if ($line eq "");
 
 		if (!defined $commentBlock && $line =~ /^\/\*/) {
@@ -341,6 +351,8 @@ sub parseDataFile {
 		next if ($line =~ /^#/);
 		$line =~ s/[\r\n]//g;
 		$line =~ s/\s+$//g;
+		$line =~ s/\s*#.*// if ($file eq Settings::getControlFilename("routeweights.txt"));
+		next unless length $line;
 		($key, $value) = $line =~ /([\s\S]*) ([\s\S]*?)$/;
 		if ($key ne "" && $value ne "") {
 			$$r_hash{$key} = $value;
@@ -361,6 +373,8 @@ sub parseDataFile_lc {
 		next if ($line =~ /^#/);
 		$line =~ s/[\r\n]//g;
 		$line =~ s/\s+$//g;
+		$line =~ s/\s*#.*// if ($file eq Settings::getControlFilename('pickupitems.txt') or $file eq Settings::getControlFilename("arrowcraft.txt"));
+		next unless length $line;
 		($key, $value) = $line =~ /([\s\S]*) ([\s\S]*?)$/;
 		if ($key ne "" && $value ne "") {
 			$$r_hash{lc($key)} = $value;
@@ -386,7 +400,7 @@ sub parseDataFile2 {
 		$r_hash->{$key} = $value;
 	}
 	close FILE;
-	
+
 	return 1;
 }
 
@@ -441,10 +455,14 @@ sub parseShopControl {
 		$line =~ s/[\r\n\x{FEFF}]//g;
 		next if $line =~ /^$/ || $line =~ /^#/;
 
-		if (!$shop->{title_line}) { 
+		if (!$shop->{title_line}) {
 			$shop->{title_line} = $line;
 			next;
 		}
+
+		# Strip mid-line comments after parsing the shop title, so shops can use '#' in their titles
+		$line =~ s/\s*#.*//;
+		next unless length $line;
 
 		my ($name, $price, $amount) = split(/\t+/, $line);
 		$price =~ s/^\s+//g;
@@ -490,18 +508,32 @@ sub parseItemsControl {
 	my ($file, $r_hash) = @_;
 	undef %{$r_hash};
 	my ($key, $args_text, %cache);
-	
+
 	my $reader = new Utils::TextReader($file);
 	until ($reader->eof) {
-		$_ = lc $reader->readLine;
-		next if /^#/;
-		if (($key, $args_text) = extract_delimited and $key) {
+		my $line = lc $reader->readLine;
+		next if $line =~ /^\s*#/;
+
+		chomp $line;
+		if (($key, $args_text) = extract_delimited($line) and $key) {
 			$key =~ s/^.|.$//g;
 			$args_text =~ s/^\s+//;
+		} elsif ($line =~ /^[\s0-9]+$/) {
+			($key, $args_text) = $line =~ /^(\d+)\s(.*)$/;
 		} else {
-			($key, $args_text) = /([\s\S]+?)\s(\d+[\s\S]*)/;
+			my @reverseString = reverse(split(//, $line));
+			my $separator = length $line;
+
+			foreach my $c (@reverseString) {
+				last if $c =~ /[^\s0-9]/;
+				--$separator;
+			}
+
+			$args_text = substr($line, $separator);
+			$args_text =~ s/^\s+//;
+			$key = substr($line, 0, $separator);
 		}
-		
+
 		next if $key =~ /^$/;
 		my @args = split /\s+/, $args_text;
 		# Cache similar entries to save memory.
@@ -543,6 +575,8 @@ sub parseMonControl {
 		next if ($line =~ /^#/);
 		$line =~ s/[\r\n]//g;
 		$line =~ s/\s+$//g;
+		$line =~ s/\s*#.*//;
+		next unless length $line;
 
 		if ($line =~ /\t/) {
 			($key, $args) = split /\t+/, lc($line);
@@ -569,7 +603,9 @@ sub parseMonControl {
 sub parsePortals {
 	my $file = shift;
 	my $r_hash = shift;
+	my $r_array = shift;
 	undef %{$r_hash};
+	undef @{$r_array};
 	my $reader = new Utils::TextReader($file);
 	while (!$reader->eof()) {
 		my $line = $reader->readLine();
@@ -578,7 +614,7 @@ sub parsePortals {
 		$line =~ s/\s+/ /g;
 		$line =~ s/^\s+|\s+$//g;
 		$line =~ s/(.*)[\s\t]+#.*$/$1/;
-		
+
 		if ($line =~ /^([\w|@|-]+)\s(\d{1,3})\s(\d{1,3})\s([\w|@|-]+)\s(\d{1,3})\s(\d{1,3})\s?(.*)/) {
 		my ($source_map, $source_x, $source_y, $dest_map, $dest_x, $dest_y, $misc) = ($1, $2, $3, $4, $5, $6, $7);
 			my $portal = "$source_map $source_x $source_y";
@@ -597,12 +633,15 @@ sub parsePortals {
 				$$r_hash{$portal}{'dest'}{$dest}{'steps'} = $3;
 			} elsif ($misc =~ /^(\d+)\s(.*)$/) { # [cost] [talk sequence]
 				$$r_hash{$portal}{'dest'}{$dest}{'cost'} = $1;
+				$$r_hash{$portal}{'dest'}{$dest}{'allow_ticket'} = 0;
 				$$r_hash{$portal}{'dest'}{$dest}{'steps'} = $2;
 			} else { # [talk sequence]
+				$$r_hash{$portal}{'dest'}{$dest}{'cost'} = 0;
+				$$r_hash{$portal}{'dest'}{$dest}{'allow_ticket'} = 0;
 				$$r_hash{$portal}{'dest'}{$dest}{'steps'} = $misc;
 			}
 		}
-		
+
 	}
 	return 1;
 }
@@ -647,6 +686,8 @@ sub parsePriority {
 		s/\x{FEFF}//g;
 		next if (/^#/);
 		s/[\r\n]//g;
+		s/\s*#.*//;
+		next unless length;
 		$$r_hash{lc($_)} = $pri + 1;
 		$pri--;
 	}
@@ -716,7 +757,7 @@ sub parseRODescLUT {
 	undef %{$r_hash};
 	my $ID;
 	my $IDdesc;
-	my $reader = Utils::TextReader->new($file);
+	my $reader = Utils::TextReader->new($file, { hide_comments => 0 });
 	until ($reader->eof) {
 		$_ = $reader->readLine;
 		s/\r//g;
@@ -755,17 +796,17 @@ sub parseROSlotsLUT {
 
 sub parseROQuestsLUT {
 	my ($file, $r_hash) = @_;
-	
+
 	my %ret = (
 		file => $file,
 		hash => $r_hash,
 	);
 	Plugins::callHook ('FileParsers::ROQuestsLUT', \%ret);
 	return if $ret{return};
-	
+
 	undef %{$r_hash};
 	my ($data, $flag);
-	my $reader = Utils::TextReader->new($file);
+	my $reader = Utils::TextReader->new($file, { hide_comments => 0 });
 	until ($reader->eof) {
 		$_ = $reader->readLine;
 		s/\r//g;
@@ -785,13 +826,13 @@ sub parseROQuestsLUT {
 				$flag = 1;
 			}
 		}
-		
+
 		if ($flag) {
 			$$r_hash{$data->{id}} = $data;
 			undef $data; undef $flag;
 		}
 	}
-	
+
 	return 1;
 }
 
@@ -817,7 +858,7 @@ sub parseRecvpackets {
 		#warning $r_hash->{$key}." ".$key."\n";
 	}
 	close FILE;
-	
+
 	return 1;
 }
 
@@ -883,6 +924,8 @@ sub parseTimeouts {
 		$line =~ s/\x{FEFF}//g;
 		next if ($line =~ /^#/);
 		$line =~ s/[\r\n]//g;
+		$line =~ s/\s*#.*//;
+		next unless length $line;
 
 		my ($key, $value) = $line =~ /([\s\S]+?) ([\s\S]*?)$/;
 		my @args = split (/ /, $value);
@@ -913,6 +956,88 @@ sub parseWaypoint {
 		push @{$r_array}, \%point;
 	}
 	close FILE;
+	return 1;
+}
+
+sub parseItemStackLimit {
+	my ($file, $r_hash) = @_;
+	my $reader = Utils::TextReader->new($file);
+
+	while (!$reader->eof()) {
+		my $line = $reader->readLine();
+		$line =~ s/\x{FEFF}//g;
+		$line =~ s/[\r\n]//g;
+		$line =~ s/#.*$//g;
+		$line =~ s/^\s+//g;
+
+		next unless length $line;
+
+		my ($ID, $stack, $mask) = split /\s+/, $line;
+
+		next unless $mask;
+
+		for (my $i = 1; $i < 16; $i = $i << 1) {
+			next unless $mask & $i;
+			$r_hash->{$ID}->{$i} = $stack;
+		}
+	}
+
+	return 1;
+}
+
+##
+# parseAttendanceRewards(file, attendance_rewards)
+# file: Filename to parse
+# attendance_rewards: Return hash
+#
+# Parses a attendance_rewards file. The attendance_rewards file should have the start time
+# on its first line, should have end time on its second line followed by "$day\t$item_id\t$amount" on subsequent
+# lines. Blank lines, or lines starting with "#" are ignored.
+#
+# Example:
+# start 20200212
+# end 20200311
+# 1 14553 5
+# 2 14556 5
+# 3 14559 5
+sub parseAttendanceRewards {
+	my ($file, $attendance_rewards) = @_;
+
+	%{$attendance_rewards} = ();
+	my $reader = new Utils::TextReader($file);
+
+	# start attendance rewards vars
+	$attendance_rewards->{period} = ();
+	$attendance_rewards->{items} = ();
+	my $line;
+
+	while (!$reader->eof()) {
+		$line = $reader->readLine();
+		chomp;
+	
+		$line =~ s/[\r\n\x{FEFF}]//g;
+		next if $line =~ /^$/ || $line =~ /^#/;
+
+		# Strip mid-line comments
+		$line =~ s/\s*#.*//;
+		next unless length $line;
+
+		if($line =~ /^start\s(\d+)/) {
+			$attendance_rewards->{period}{start} = $1;
+			next;
+		} elsif ($line =~ /^end\s(\d+)/) {
+			$attendance_rewards->{period}{end} = $1;
+			next;	
+		}
+
+		my ($day, $item_id, $amount) = split(/ /, $line);
+		$item_id =~ s/^\s+//g;
+		$amount =~ s/^\s+//g;
+		
+		$attendance_rewards->{items}{$day}{item_id} = $item_id;
+		$attendance_rewards->{items}{$day}{amount} =  $amount;
+	}
+
 	return 1;
 }
 
@@ -1114,59 +1239,35 @@ sub writeDataFile {
 sub writeDataFileIntact {
 	my $file = shift;
 	my $r_hash = shift;
-	my $no_undef = shift; # ?
 	# following args for recursive call (!include)
-	my $blocks = shift || {};
-	my $diffs = shift || {};
-	my $readOnly = shift;
+	my $blocks = {};
+	my $diffs = {};
 
-	my (%data, @lines, $key, $value, $inBlock, $commentBlock);
-	my $reader = new Utils::TextReader($file);
+	my (@lines, $key, $value, $inBlock, $commentBlock);
+	my $reader = new Utils::TextReader($file, { hide_includes => 0, hide_comments => 0 });
 	while (!$reader->eof()) {
-		my $lines = $reader->readLine();
-		$lines =~ s/\x{FEFF}//g;
+		my $current_file = $reader->currentFile;
+		my $lines = $reader->readLine;
 		$lines =~ s/[\r\n]//g;	# Remove line endings
-		if ($lines =~ /^[\s\t]*#/ || $lines =~ /^[\s\t]*$/ || $lines =~ /^\!include( |$)/) {
-			push @lines, $lines;
-			
-			if ($lines =~ /^\!include( |$)/) {
-				($key, $value) = $lines =~ /^(.*?) (.*)/;
-				my $f = $value;
-				if (!File::Spec->file_name_is_absolute($value) && $value !~ /^\//) {
-					if ($file =~ /[\/\\]/) {
-						$f = $file;
-						$f =~ s/(.*)[\/\\].*/$1/;
-						$f = File::Spec->catfile($f, $value);
-					} else {
-						$f = $value;
-					}
-				}
-				if (-f $f) {
-					my $ret = writeDataFileIntact($f, $r_hash, 1, $blocks, $diffs, 1);
-					return $ret unless $ret;
-				} else {
-					error Translation::TF("%s: Include file not found: %s\n", $file, $f);
-					return 0;
-				}
-			}
-			
+		if ($lines =~ /^[\s\t]*#/ || $lines =~ /^[\s\t]*$/ || $lines =~ /^\s*\!include( |$)/) {
+			push @lines, $lines if $current_file eq $file;
 			next;
 		}
 		$lines =~ s/^[\t\s]*//;	# Remove leading tabs and whitespace
 		$lines =~ s/\s+$//g;	# Remove trailing whitespace
 
 		if (!defined $commentBlock && $lines =~ /^\/\*/) {
-			push @lines, "$lines";
+			push @lines, "$lines" if $current_file eq $file;
 			$commentBlock = 1;
 			next;
 
 		} elsif ($lines =~ m/\*\/$/) {
-			push @lines, "$lines";
+			push @lines, "$lines" if $current_file eq $file;
 			undef $commentBlock;
 			next;
 
 		} elsif ($commentBlock) {
-			push @lines, "$lines";
+			push @lines, "$lines" if $current_file eq $file;
 			next;
 
 		} elsif (!defined $inBlock && $lines =~ /{$/) {
@@ -1188,12 +1289,12 @@ sub writeDataFileIntact {
 
 			my $line = $key;
 			$line .= " $r_hash->{$inBlock}" if ($r_hash->{$inBlock} ne '');
-			push @lines, "$line {";
+			push @lines, "$line {" if $current_file eq $file;
 
 		} elsif (defined $inBlock && $lines eq "}") {
 			# End of block
 			undef $inBlock;
-			push @lines, "}";
+			push @lines, "}" if $current_file eq $file;
 
 		} else {
 			# Option
@@ -1206,28 +1307,23 @@ sub writeDataFileIntact {
 				my $realKey = "${inBlock}_${key}";
 				my $line = "\t$key";
 				$line .= " $r_hash->{$realKey}" if ($r_hash->{$realKey} ne '');
-				push @lines, $line;
+				push @lines, $line if $current_file eq $file;
 			} else {
 				my $line = $key;
 				$line .= " $r_hash->{$key}" if ($r_hash->{$key} ne '');
-				push @lines, $line;
-				
-				$diffs->{$key} = $r_hash->{$key} if $readOnly && $r_hash->{$key} ne $value;
-				$data{$key} = 1;
+				push @lines, $line if $current_file eq $file;
+				$diffs->{$key} = 1 if $current_file ne $file && $r_hash->{$key} ne $value;
+				delete $diffs->{$key} if $current_file eq $file || $r_hash->{$key} eq $value;
 			}
 		}
 	}
 	close FILE;
 
-	return 1 if $readOnly;
 	debug TF("Saving %s...\n", $file), 'writeFile';
 
 	# options that are different in memory and file data, but defined in !include'd (read only) files
-	%$diffs = map { $_ => $diffs->{$_} } grep { !$data{$_} } keys %$diffs;
-	if (%$diffs) {
-		push @lines, map { $diffs->{$_} ne '' ? "$_ $r_hash->{$_}" : "$_" } keys %$diffs;
-		debug TF("Creating overrides for %s\n", (join ', ', keys %$diffs)), 'writeFile';
-		$diffs = {};
+	foreach (sort keys %$diffs) {
+		push @lines, $r_hash->{$_} ne '' ? "$_ $r_hash->{$_}" : "$_";
 	}
 
 	open FILE, ">:utf8", $file;
@@ -1241,7 +1337,7 @@ sub writeDataFileIntact2 {
 	my $data;
 	my $key;
 
-	my $reader = new Utils::TextReader($file);
+	my $reader = new Utils::TextReader($file, { hide_includes => 0, hide_comments => 0 });
 	while (!$reader->eof()) {
 		my $line = $reader->readLine();
 		$line =~ s/\x{FEFF}//g;
@@ -1322,10 +1418,10 @@ sub updateMonsterLUT {
 
 sub updatePortalLUT {
 	my ($file, $sourceMap, $sourceX, $sourceY, $destMap, $destX, $destY) = @_;
-	
+
 	my $plugin_args = {file => $file, sourceMap => $sourceMap, sourceX => $sourceX, sourceY => $sourceY, destMap => $destMap, destX => $destX, destY => $destY};
 	Plugins::callHook('updatePortalLUT', $plugin_args);
-	
+
 	unless ($plugin_args->{return}) {
 		open FILE, ">>:utf8", $file;
 		print FILE "$sourceMap $sourceX $sourceY $destMap $destX $destY\n";
@@ -1336,10 +1432,10 @@ sub updatePortalLUT {
 #Add: NPC talk Sequence
 sub updatePortalLUT2 {
 	my ($file, $sourceMap, $sourceX, $sourceY, $destMap, $destX, $destY, $steps) = @_;
-	
+
 	my $plugin_args = {file => $file, sourceMap => $sourceMap, sourceX => $sourceX, sourceY => $sourceY, destMap => $destMap, destX => $destX, destY => $destY, steps => $steps};
 	Plugins::callHook('updatePortalLUT2', $plugin_args);
-	
+
 	unless ($plugin_args->{return}) {
 		open FILE, ">>:utf8", $file;
 		print FILE "$sourceMap $sourceX $sourceY $destMap $destX $destY $steps\n";

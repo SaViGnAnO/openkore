@@ -18,9 +18,7 @@
 package Network::Send::kRO::RagexeRE_2008_08_27a;
 
 use strict;
-use base qw(Network::Send::kRO::Sakexe_2009_04_08a); #looks weird, inheriting from a newer file... but this is what eA has and we want to be able to play on eA servers
-
-use Log qw(debug);
+use base qw(Network::Send::kRO::RagexeRE_0);
 
 sub version {
 	return 24;
@@ -32,22 +30,24 @@ sub new {
 	
 	my %packets = (
 		'0072' => ['skill_use', 'x7 V x2 v x a4', [qw(lv skillID targetID)]],#22
+		'007E' => ['skill_use_location_text', 'v x8 v x2 v x2 v x3 v Z80', [qw(lvl ID x y info)]],
 		'0085' => ['actor_look_at', 'x2 C x4 C', [qw(head body)]],
 		'0089' => ['sync', 'x5 V', [qw(time)]], # TODO
 		'008C' => ['actor_info_request', 'x8 a4', [qw(ID)]],
-		'0094' => ['storage_item_add', 'x v x10 V', [qw(index amount)]],
+		'0094' => ['storage_item_add', 'x a2 x10 V', [qw(ID amount)]],
 		'009B' => ['map_login', 'x5 a4 x4 a4 x6 a4 V C', [qw(accountID charID sessionID tick sex)]],
-		'009F' => ['item_use', 'x5 v x7 a4', [qw(index targetID)]],#20
+		'009F' => ['item_use', 'x5 a2 x7 a4', [qw(ID targetID)]],#20
 		'00A2' => ['actor_name_request', 'x8 a4', [qw(ID)]],
 		'00A7' => ['character_move', 'x4 a3', [qw(coords)]],
 		'00F5' => ['item_take', 'x5 a4', [qw(ID)]],
-		'00F7' => ['storage_item_remove', 'x v x8 V', [qw(index amount)]],
+		'00F7' => ['storage_item_remove', 'x a2 x8 V', [qw(ID amount)]],
 		'0113' => ['skill_use_location', 'x8 v x2 v x2 v x3 v', [qw(lv skillID x y)]],
-		'0116' => ['item_drop', 'x4 v x7 v', [qw(index amount)]],
+		'0116' => ['item_drop', 'x4 a2 x7 v', [qw(ID amount)]],
 		'0190' => ['actor_action', 'x7 a4 x9 C', [qw(targetID type)]],
 		'0436' => undef,
 		'0437' => undef,
 	);
+	
 	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
 	
 	my %handlers = qw(
@@ -55,19 +55,12 @@ sub new {
 		item_use 009F
 		map_login 009B
 		skill_use 0072
+		skill_use_location_text 007E
 	);
+	
 	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
 	
-	$self;
-}
-
-sub sendSkillUseLocInfo {
-	my ($self, $ID, $lv, $x, $y, $moreinfo) = @_;
-
-	my $msg = pack('v x8 v x2 v x2 v x3 v Z80', 0x007E, $lv, $ID, $x, $y, $moreinfo);
-
-	$self->sendToServer($msg);
-	debug "Skill Use on Location: $ID, ($x, $y)\n", "sendPacket", 2;
+	return $self;
 }
 
 1;

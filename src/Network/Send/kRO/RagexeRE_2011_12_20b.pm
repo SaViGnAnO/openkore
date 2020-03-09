@@ -13,8 +13,6 @@ package Network::Send::kRO::RagexeRE_2011_12_20b;
 
 use strict;
 use base qw(Network::Send::kRO::RagexeRE_2011_11_22a);
-use base qw(Network::Send);
-use Network::Send ();
 use Log qw(debug);
 use Utils qw(getCoordString);
 
@@ -25,10 +23,10 @@ sub new {
 	my $self = $class->SUPER::new(@_);
 	
 	my %packets = (
-		'022D' => ['item_drop', 'v2', [qw(index amount)]],#6
+		'022D' => ['item_drop', 'a2 v', [qw(ID amount)]],#6
 		'035F' => ['sync', 'V', [qw(time)]],#6
 		'0362' => ['homunculus_command', 'v C', [qw(commandType, commandID)]],#5
-		'0364' => ['storage_item_remove', 'v V', [qw(index amount)]],#8
+		'0364' => ['storage_item_remove', 'a2 V', [qw(ID amount)]],#8
 		'0368' => ['actor_name_request', 'a4', [qw(ID)]],#6
 		'0369' => ['actor_action', 'a4 C', [qw(targetID type)]],
 		'0436' => undef,

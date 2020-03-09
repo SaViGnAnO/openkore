@@ -14,11 +14,12 @@
 package Network::Send::ServerType16;
 
 use strict;
-use Globals qw($char $syncSync $net);
 use Network::Send::ServerType11;
 use Network::PaddedPackets;
 use base qw(Network::Send::ServerType11);
-use Log qw(error debug);
+
+use Globals qw($char $syncSync);
+use Log qw(debug);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
@@ -125,7 +126,7 @@ sub sendStorageAdd {
 	my $index = shift;
 	my $amount = shift;
 	my $msg = pack("C*", 0xF3, 0x00, 0x6E, 0x05, 0x78, 0xD1, 0x00) .
-			pack("v", $index) .
+			pack("a2", $index) .
 			pack("C*", 0xE5) .
 			pack("V", $amount);
 	$self->sendToServer($msg);
@@ -135,7 +136,7 @@ sub sendStorageAdd {
 sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
 	my $msg = pack("C*", 0xF5, 0x00, 0x00, 0x00, 0x10, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00) .
-			pack("v*", $index) .
+			pack("a2", $index) .
 			pack("C*", 0x21, 0x7E) .
 			pack("V*", $amount);
 	$self->sendToServer($msg);

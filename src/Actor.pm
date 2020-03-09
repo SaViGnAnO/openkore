@@ -44,6 +44,7 @@ use Task;
 use Translation qw(T TF);
 use Actor::Unknown;
 use Task::Timeout;
+use Utils::Assert;
 
 # Make it so that
 #     print $actor;
@@ -116,17 +117,17 @@ sub new {
 # a new Actor::Unknown object.
 sub get {
 	my ($ID) = @_;
-	assert(defined $ID) if DEBUG;
+	assert(defined $ID, "ID must be provided to retrieve and Actor class") if DEBUG;
 
 	if ($ID eq $accountID) {
 		# I put assertions here because $char seems to be unblessed sometimes.
 		assert(defined $char, '$char must be defined') if DEBUG;
-		assert(UNIVERSAL::isa($char, 'Actor::You'), '$char must be of class Actor::You') if DEBUG;
+		assertClass($char, 'Actor::You') if DEBUG;
 		return $char;
 	} elsif ($items{$ID}) {
 		return $items{$ID};
 	} else {
-		foreach my $list ($playersList, $monstersList, $npcsList, $petsList, $portalsList, $slavesList) {
+		foreach my $list ($playersList, $monstersList, $npcsList, $petsList, $portalsList, $slavesList, $elementalsList) {
 			my $actor = $list->getByID($ID);
 			if ($actor) {
 				return $actor;
@@ -137,14 +138,6 @@ sub get {
 }
 
 ### CATEGORY: Hash members
-
-##
-# String $Actor->{actorType}
-# Invariant: defined(value)
-#
-# An identifier for this actor's type. The meaning for this field
-# depends on the actor's class. For example, for Player actors,
-# this is the job ID (though you should use $ActorPlayer->{jobID} instead).
 
 ##
 # int $Actor->{binID}
@@ -578,7 +571,7 @@ sub setStatus {
 			));
 		}
 		
-		if ($char->{party} && $char->{party}{users} && $char->{party}{users}{$self->{ID}} && $char->{party}{users}{$self->{ID}}{name}) {
+		if ($char->{party}{joined} && $char->{party}{users} && $char->{party}{users}{$self->{ID}} && $char->{party}{users}{$self->{ID}}{name}) {
 			$again = 'again' if $char->{party}{users}{$self->{ID}}{statuses}{$handle};
 			$char->{party}{users}{$self->{ID}}{statuses}{$handle} = {};
 		}
@@ -587,7 +580,7 @@ sub setStatus {
 		return unless ($self->{statuses} && $self->{statuses}{$handle}); # silent when "again no status"
 		$again = 'no longer';
 		delete $self->{statuses}{$handle};
-		delete $char->{party}{users}{$self->{ID}}{statuses}{$handle} if ($char->{party} && $char->{party}{users} && $char->{party}{users}{$self->{ID}} && $char->{party}{users}{$self->{ID}}{name});
+		delete $char->{party}{users}{$self->{ID}}{statuses}{$handle} if ($char->{party}{joined} && $char->{party}{users} && $char->{party}{users}{$self->{ID}} && $char->{party}{users}{$self->{ID}}{name});
 	}
 	message
 		Misc::status_string($self, defined $statusName{$handle} ? $statusName{$handle} : $handle, $again, $flag ? $tick/1000 : 0),
@@ -628,7 +621,7 @@ sub statusActive {
 sub cartActive {
 	my ($self) = @_;
 	
-	if ($cart{exists} ||
+	if ($self->cart->isReady ||
 		$self->statusActive('EFFECTSTATE_PUSHCART, EFFECTSTATE_PUSHCART2, EFFECTSTATE_PUSHCART3, EFFECTSTATE_PUSHCART4, EFFECTSTATE_PUSHCART5')) {
 		return 1;
 	}
@@ -785,7 +778,7 @@ sub route {
 	} else {
 		$task = new Task::Route(@params);
 	}
-	$task->{$_} = $args{$_} for qw(attackID attackOnRoute noSitAuto LOSSubRoute);
+	$task->{$_} = $args{$_} for qw(attackID attackOnRoute noSitAuto LOSSubRoute isRandomWalk isFollow);
 	
 	$self->queue('route', $task);
 }
@@ -872,5 +865,17 @@ sub sendAttackStop {
 # void $Actor->sendStandBy()
 #
 # Send "standby" to the server.
+
+##
+# void $Actor->hairColor()
+#
+# Returns proper hair color
+sub hairColor {
+	my ($self) = @_;
+	
+	return $self->{hair_pallete} if exists $self->{hair_pallete} && $self->{hair_pallete};
+	return $self->{hair_color} if exists $self->{hair_color};
+	return undef;
+}
 
 1;

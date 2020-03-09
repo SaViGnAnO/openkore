@@ -13,7 +13,6 @@ package Network::Send::kRO::RagexeRE_2013_03_20;
 
 use strict;
 use base qw(Network::Send::kRO::RagexeRE_2012_06_18a);
-use Log qw(debug);
 
 sub new {
 	my ($class) = @_;
@@ -43,21 +42,24 @@ sub new {
 		'07E4' => undef,
 		'0933' => ['item_take', 'a4', [qw(ID)]],#6
 		'0362' => undef,
-		'0438' => ['item_drop', 'v2', [qw(index amount)]],#6
+		'0438' => ['item_drop', 'a2 v', [qw(ID amount)]],#6
 		'07EC' => undef,
-		'08AC' => ['storage_item_add', 'v V', [qw(index amount)]],#8
+		'08AC' => ['storage_item_add', 'a2 V', [qw(ID amount)]],#8
 		'0364' => undef,
-		'0874' => ['storage_item_remove', 'v V', [qw(index amount)]],#8
+		'0874' => ['storage_item_remove', 'a2 V', [qw(ID amount)]],#8
 		'0959' => ['skill_use_location', 'v4', [qw(lv skillID x y)]],#10
 		'096A' => undef,
 		'0898' => ['actor_info_request', 'a4', [qw(ID)]],#6
 		'0368' => undef,
 		'094C' => ['actor_name_request', 'a4', [qw(ID)]],#6
 #		'00A9' => undef,
-		'0998' => ['send_equip', 'v V', [qw(index type)]],#8
+		'0998' => ['send_equip', 'a2 V', [qw(ID type)]],#8
 		'09A1' => ['sync_received_characters'],#2
 		'0815' => undef,
 		'0938' => ['buy_bulk_openShop', 'a4 c a*', [qw(limitZeny result itemInfo)]],#-1
+		'094E' => ['search_store_info', 'v C V2 C2 a*', [qw(len type max_price min_price item_count card_count item_card_list)]],
+		'092E' => ['search_store_request_next_page'],
+		'0365' => ['search_store_select', 'a4 a4 v', [qw(accountID storeID nameID)]],
 	);
 	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
 	
@@ -80,6 +82,9 @@ sub new {
 		storage_item_add 08AC
 		storage_item_remove 0874
 		sync 0363
+		search_store_info 094E
+		search_store_request_next_page 092E
+		search_store_select 0365
 	);
 	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
 	

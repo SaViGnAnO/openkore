@@ -1,4 +1,4 @@
-#format: <source coordinate><destination coordinate>[zenny cost][conversation sequence]
+#format: <source coordinate><destination coordinate>[zenny cost][allow ticket][conversation sequence]
 alberta 195 151 alb2trea 62 69 0 c c r0
 alb2trea 39 50 alberta 192 169 0 r0
 alberta 247 122 tur_dun01 157 39 10000 c r1 c r0 c c c
@@ -154,10 +154,18 @@ izlude 134 88 payon 161 58 1200 1 c r2 c r1
 izlude 134 88 morocc 156 47 1200 1 c r2 c r2
 izlude 134 88 aldebaran 168 112 1800 1 c r2 c r3
 rachel 109 138 veins 205 101 2200 1 c r2 c r0
-rachel 109 138 yuno 158 125 3000 1 c r2 c r1
 veins 208 128 rachel 115 125 2200 1 c r2 c r0
-veins 208 128 yuno 158 125 3000 1 c r2 c r1
 moc_para01 14 32 prontera 116 72 1800 1 c c r0 c n
+
+#Geffen
+geffen 120 62 prontera 116 72 1200 1 c r2 c r0
+geffen 120 62 aldebaran 168 112 1200 1 c r2 c r1
+geffen 120 62 gef_fild10 52 326 1700 1 c r2 c r2
+geffen 120 62 mjolnir_02 99 351 1700 1 c r2 c r3
+geffen 203 123 prontera 116 72 1200 1 c r2 c r0
+geffen 203 123 aldebaran 168 112 1200 1 c r2 c r1
+geffen 203 123 gef_fild10 52 326 1700 1 c r2 c r2
+geffen 203 123 mjolnir_02 99 351 1700 1 c r2 c r3
 
 # Training Grounds
 new_1-1 148 112 new_1-2 100 9
@@ -239,10 +247,6 @@ arena_room 105 93 prt_are_in 60 14 0 c r0
 prt_are_in 54 13 arena_room 100 77
 
 # Anthell
-#anthell01 35 267 moc_fild20 161 144
-#anthell02 171 170 moc_fild20 333 315
-#moc_fild20 156 143 anthell01 35 263
-#moc_fild20 337 315 anthell02 168 170
 anthell01 35 267 cmd_fild08 335 355
 anthell02 171 170 cmd_fild08 344 82
 cmd_fild08 335 355 anthell01 35 263
@@ -256,31 +260,39 @@ moc_fild11 377 197 moc_fild20 36 177
 moc_fild13 32 171 moc_fild20 349 179
 moc_fild16 124 381 moc_fild20 197 24
 moc_fild16 333 380 moc_fild20 197 24
-moc_fild20 38 174 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 38 183 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 189 21 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 200 21 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 354 183 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 354 174 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 203 336 moc_fild01 86 32 0 c r1 c c c c r2
-moc_fild20 215 336 moc_fild01 86 32 0 c r1 c c c c r2
-moc_fild20 203 336 morocc 160 61 0 c r1 c c c c r1 c c r1
-moc_fild20 215 336 morocc 160 61 0 c r1 c c c c r1 c c r1
+moc_fild20 38 174 morocc 160 61 0 c r2
+moc_fild20 38 183 morocc 160 61 0 c r2
+moc_fild20 189 21 moc_fild16 124 372 0 c r2
+moc_fild20 200 21 moc_fild16 124 372 0 c r2
+moc_fild20 354 183 moc_fild13 41 171 0 c r2
+moc_fild20 354 174 moc_fild13 41 171 0 c r2
+moc_fild20 203 336 prt_fild10 263 34 0 c r2
+moc_fild20 215 336 prt_fild10 263 34 0 c r2
 morocc 299 207 moc_fild20 36 177
 prt_fild09 95 19 moc_fild20 209 333
 prt_fild09 246 17 moc_fild20 209 333
 prt_fild10 263 23 moc_fild20 209 333
+moc_fild16 124 381 moc_fild20 208 207 0 c r2
+moc_fild16 124 381 moc_fild13 41 171 0 c r3
+moc_fild13 32 171 moc_fild16 124 372 0 c r4
+moc_fild13 32 171 morocc 160 61 0 c r3
+moc_fild13 32 171 moc_fild20 208 207 0 c r2
+prt_fild10 263 23 moc_fild07 337 209 0 c r4
+prt_fild10 263 23 morocc 160 61 0 c r3
+prt_fild10 263 23 moc_fild20 208 207 0 c r2
+moc_fild07 380 202 prt_fild10 263 34 c r3
+moc_fild07 380 202 moc_fild20 208 207 c r2
 
 # Dimensional Gorge (Episode 12)
 # moc_fild20 -> moc_fild21 npcs are only available with the quest and a party with at least two members online
-moc_fild20 38 174 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 38 183 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 189 21 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 200 21 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 354 183 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 354 174 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 203 336 moc_fild21 38 193 0 c r1 c c c
-moc_fild20 215 336 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 38 174 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 38 183 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 189 21 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 200 21 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 354 183 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 354 174 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 203 336 moc_fild21 38 193 0 c r1 c c c
+#moc_fild20 215 336 moc_fild21 38 193 0 c r1 c c c
 moc_fild21 26 196 moc_fild20 349 179
 moc_fild22 32 196 moc_fild20 349 179
 
@@ -502,7 +514,7 @@ aldeg_cas05 70 189 aldeg_cas05 166 81
 aldeg_cas05 150 67 aldeg_cas05 9 187
 aldeg_cas05 5 187 aldeg_cas05 151 62
 aldeg_cas05 165 232 aldeg_cas05 193 49
-aldeg_cas05 188 49 aldeg_cas05 165 288
+aldeg_cas05 188 49 aldeg_cas05 165 228
 aldeg_cas05 195 42 aldeg_cas05 19 227
 aldeg_cas05 15 227 aldeg_cas05 195 46
 aldeg_cas05 13 175 aldeg_cas05 162 194
@@ -588,15 +600,11 @@ cmd_fild02 382 269 cmd_fild04 21 275
 cmd_fild03 23 68 cmd_fild01 362 73
 cmd_fild03 23 269 cmd_fild01 362 263
 cmd_fild03 181 17 cmd_fild04 180 372
-cmd_fild03 384 165 cmd_fild05 21 163
 cmd_fild04 21 275 cmd_fild02 382 269
 cmd_fild04 31 92 cmd_fild02 358 95
 cmd_fild04 180 372 cmd_fild03 181 17
 cmd_fild04 376 287 cmd_fild06 21 285
-cmd_fild05 21 163 cmd_fild03 384 165
-cmd_fild05 148 19 cmd_fild06 150 380
 cmd_fild06 21 285 cmd_fild04 376 287
-cmd_fild06 150 380 cmd_fild05 148 19
 cmd_fild06 151 27 cmd_fild07 149 379
 cmd_fild06 368 96 cmd_fild08 15 102
 cmd_fild06 372 359 cmd_fild08 25 355
@@ -670,8 +678,6 @@ ein_fild08 164 380 einbroch 150 28
 ein_fild08 361 129 ein_fild09 37 135
 ein_fild09 71 352 einbech 62 32
 ein_fild09 34 135 ein_fild08 358 130
-ein_fild09 328 344 ein_fild10 28 330
-ein_fild10 25 330 ein_fild09 325 344
 ein_fild10 196 371 ein_fild07 179 46
 gef_dun00 104 103 gef_tower 153 28
 gef_dun00 107 168 gef_dun01 115 240
@@ -710,12 +716,10 @@ gef_fild07 40 19 gef_fild13 41 373
 gef_fild07 64 363 gef_fild05 64 15
 gef_fild07 339 187 geffen 26 119
 gef_fild08 200 355 gef_fild06 218 17
-gef_fild08 215 18 gef_fild12 221 374
 gef_fild08 360 187 gef_fild07 18 191
 gef_fild09 23 56 gef_fild13 380 56
 gef_fild09 225 25 gef_fild10 251 371
 gef_fild09 368 95 gef_fild01 16 102
-gef_fild10 27 219 gef_fild14 371 219
 gef_fild10 63 337 in_orcs01 30 154
 gef_fild10 104 21 gef_fild11 111 364
 gef_fild10 136 331 in_orcs01 124 171
@@ -726,11 +730,6 @@ gef_fild10 251 371 gef_fild09 225 25
 gef_fild10 370 56 gef_fild03 18 52
 gef_fild11 111 364 gef_fild10 104 21
 gef_fild11 377 293 prt_fild11 17 281
-gef_fild12 221 374 gef_fild08 215 18
-gef_fild12 368 180 gef_fild13 25 202
-gef_fild12 373 50 gef_fild13 25 59
-gef_fild13 25 59 gef_fild12 373 50
-gef_fild13 25 202 gef_fild12 368 180
 gef_fild13 41 373 gef_fild07 40 19
 gef_fild13 77 284 gefg_cas03 68 290
 gef_fild13 83 185 gefg_cas03 93 159
@@ -738,14 +737,11 @@ gef_fild13 112 269 gefg_cas03 103 283
 gef_fild13 139 240 gefg_cas03 130 250
 gef_fild13 150 54 gefg_cas01 34 136
 gef_fild13 196 281 gefg_cas04 24 145
-gef_fild13 200 25 gef_fild14 180 360
 gef_fild13 210 75 gefg_cas01 99 178
 gef_fild13 256 57 gefg_cas05 7 134
 gef_fild13 305 83 gefg_cas05 99 204
 gef_fild13 308 244 gefg_cas02 70 147
 gef_fild13 380 56 gef_fild09 23 56
-gef_fild14 180 360 gef_fild13 200 25
-gef_fild14 371 219 gef_fild10 27 219
 gef_tower 38 160 gef_tower 42 86
 gef_tower 42 86 gef_tower 38 160
 gef_tower 42 86 gef_tower 66 156
@@ -1171,7 +1167,7 @@ mjolnir_10 265 13 prt_fild01 261 373
 mjolnir_10 384 220 mjolnir_11 20 220
 mjolnir_11 20 220 mjolnir_10 384 220
 mjolnir_11 174 20 prt_fild02 173 382
-mjolnir_12 44 17 prt_maze01 17 115
+mjolnir_12 44 17 prt_maze01 17 111
 mjolnir_12 199 378 aldebaran 138 34
 mjolnir_12 220 26 mjolnir_05 220 382
 moc_castle 94 183 morocc 160 183
@@ -1188,7 +1184,6 @@ moc_fild02 350 339 pay_fild04 194 17
 moc_fild02 378 272 pay_gld 16 276
 moc_fild03 17 37 moc_fild13 308 49
 moc_fild03 70 341 moc_fild02 332 19
-moc_fild03 179 16 pay_fild11 38 330
 moc_fild03 303 170 pay_fild01 13 152
 moc_fild07 198 21 morocc 160 297
 moc_fild11 26 161 moc_fild12 289 168
@@ -1333,9 +1328,7 @@ pay_fild01 278 14 pay_fild02 83 386
 pay_fild01 353 14 pay_fild02 167 390
 pay_fild01 379 201 pay_fild07 16 200
 pay_fild01 333 361 payon 122 27
-#pay_fild02 16 175 pay_fild11 297 135
 pay_fild02 83 386 pay_fild01 278 14
-pay_fild02 134 16 pay_fild05 127 378
 pay_fild02 167 390 pay_fild01 353 14
 pay_fild02 284 108 pay_fild03 15 110
 pay_fild03 15 110 pay_fild02 284 108
@@ -1344,9 +1337,6 @@ pay_fild03 313 16 pay_fild06 305 375
 pay_fild03 392 63 alberta 15 234
 pay_fild04 17 165 moc_fild01 379 162
 pay_fild04 194 17 moc_fild02 350 339
-pay_fild05 127 378 pay_fild02 134 16
-pay_fild05 271 284 pay_fild06 28 288
-pay_fild06 28 288 pay_fild05 271 284
 pay_fild06 305 375 pay_fild03 313 16
 pay_fild07 16 200 pay_fild01 379 201
 pay_fild07 164 17 pay_fild03 172 281
@@ -1359,8 +1349,6 @@ pay_fild09 16 91 pay_fild08 262 91
 pay_fild09 112 16 pay_fild10 112 382
 pay_fild10 16 290 pay_fild07 382 290
 pay_fild10 112 382 pay_fild09 112 16
-pay_fild11 38 330 moc_fild03 179 16
-#pay_fild11 297 135 pay_fild02 16 175
 pay_gld 16 276 moc_fild02 378 272
 pay_gld 121 238 payg_cas01 214 44
 pay_gld 140 156 payg_cas04 252 275
@@ -1514,8 +1502,6 @@ prontera 204 192 prt_in 68 130
 prontera 208 154 prt_in 172 33
 prontera 237 317 prt_church 100 56
 prontera 289 203 prt_fild06 23 193
-prontera 272 108 s_atelier 13 119
-s_atelier 10 119 prontera 268 109
 prt_castle 28 121 prt_castle 40 138
 prt_castle 31 113 prt_castle 54 113
 prt_castle 40 138 prt_castle 28 121
@@ -1554,7 +1540,7 @@ prt_fild00 317 18 prt_fild04 323 387
 prt_fild00 383 249 mjolnir_09 30 249
 prt_fild01 20 292 mjolnir_09 373 288
 prt_fild01 66 373 mjolnir_10 66 15
-prt_fild01 136 373 prt_maze01 176 4
+prt_fild01 136 373 prt_maze01 99 31
 prt_fild01 199 24 prt_gld 159 298
 prt_fild01 261 373 mjolnir_10 265 13
 prt_fild01 380 243 prt_fild02 17 242
@@ -1644,72 +1630,70 @@ prt_in 256 131 prt_in 254 113
 prt_in 263 163 prt_in 274 163
 prt_in 274 163 prt_in 263 163
 prt_in 282 179 prontera 84 89
-prt_maze01 100 35 prt_maze01 139 47
-prt_maze01 102 165 prt_maze01 98 151
-prt_maze01 105 115 prt_maze01 175 168
-prt_maze01 105 75 prt_maze01 54 8
-prt_maze01 115 145 prt_maze01 8 186
-prt_maze01 115 21 prt_maze01 167 22
-prt_maze01 115 56 prt_maze01 7 57
-prt_maze01 115 96 prt_maze01 128 105
-prt_maze01 124 105 prt_maze01 111 96
-prt_maze01 124 169 prt_maze01 191 139
-prt_maze01 138 124 prt_maze01 142 111
-prt_maze01 139 44 prt_maze01 100 32
-prt_maze01 14 75 prt_maze01 63 128
-prt_maze01 140 75 prt_maze01 96 47
-prt_maze01 142 115 prt_maze01 138 128
-prt_maze01 155 133 prt_maze01 8 140
-prt_maze01 155 181 prt_maze01 88 145
-prt_maze01 155 21 prt_maze01 87 13
-prt_maze01 164 140 prt_maze01 70 68
-prt_maze01 164 22 prt_maze01 112 21
-prt_maze01 164 93 prt_maze01 72 11
-prt_maze01 17 115 prt_maze01 50 48
-prt_maze01 17 34 prt_maze01 23 128
-prt_maze01 175 164 prt_maze01 105 111
-prt_maze01 176 35 prt_maze01 182 88
-prt_maze01 176 4 prt_fild01 136 368
-prt_maze01 176 44 prt_maze01 18 152
-prt_maze01 18 155 prt_maze01 176 47
-prt_maze01 182 84 prt_maze01 177 31
-prt_maze01 19 195 prt_maze02 94 19
-prt_maze01 195 139 prt_maze01 129 174
-prt_maze01 195 15 prt_maze01 47 105
-prt_maze01 195 174 prt_maze01 47 23
-prt_maze01 195 55 prt_maze01 87 97
-prt_maze01 195 93 prt_maze01 88 55
-prt_maze01 22 84 prt_maze01 55 151
-prt_maze01 23 124 prt_maze01 17 30
-prt_maze01 25 5 prt_maze01 65 113
-prt_maze01 4 140 prt_maze01 151 133
-prt_maze01 4 186 prt_maze01 111 145
-prt_maze01 4 57 prt_maze01 112 56
-prt_maze01 44 105 prt_maze01 192 15
-prt_maze01 44 23 prt_maze01 192 174
-prt_maze01 50 44 prt_maze01 17 111
-prt_maze01 51 195 prt_maze01 63 88
-prt_maze01 54 4 prt_maze01 105 71
-prt_maze01 55 155 prt_maze01 22 88
-prt_maze01 63 124 prt_maze01 14 71
-prt_maze01 63 195 prt_maze01 63 88
-prt_maze01 63 84 prt_maze01 58 192
-prt_maze01 65 116 prt_maze01 23 9
-prt_maze01 70 75 prt_maze01 169 140
-prt_maze01 75 11 prt_maze01 167 93
-prt_maze01 75 66 prt_maze01 169 140
-prt_maze01 75 95 prt_maze01 88 173
-prt_maze01 84 10 prt_maze01 152 25
-prt_maze01 84 145 prt_maze01 151 181
-prt_maze01 84 173 prt_maze01 71 95
-prt_maze01 84 55 prt_maze01 191 93
-prt_maze01 84 97 prt_maze01 192 55
-prt_maze01 96 44 prt_maze01 140 72
-prt_maze01 98 155 prt_maze01 102 169
-prt_maze02 103 15 prt_maze01 22 191
-prt_maze02 108 182 prt_maze03 23 8
-prt_maze02 80 182 prt_maze03 23 8
-prt_maze02 84 15 prt_maze01 22 191
+prt_maze01 5 58 prt_maze01 48 104
+prt_maze01 5 140 prt_maze01 58 48
+prt_maze01 5 186 prt_maze01 182 88
+prt_maze01 14 45 mjolnir_12 44 20
+prt_maze01 14 74 prt_maze01 151 22
+prt_maze01 16 34 prt_maze01 128 173
+prt_maze01 17 114 prt_maze01 8 186
+prt_maze01 18 154 prt_maze01 177 71
+prt_maze01 22 85 prt_maze01 137 128
+prt_maze01 22 194 prt_maze01 16 31
+prt_maze01 23 5 prt_maze01 176 8
+prt_maze01 23 125 prt_maze01 151 22
+prt_maze01 45 21 prt_maze01 142 111
+prt_maze01 45 104 prt_maze01 63 128
+prt_maze01 52 45 prt_maze01 139 48
+prt_maze01 54 5 prt_maze01 128 173
+prt_maze01 54 154 prt_maze01 191 175
+prt_maze01 58 194 prt_maze01 23 128
+prt_maze01 63 85 prt_maze01 151 22
+prt_maze01 63 114 prt_maze01 111 56
+prt_maze01 63 125 prt_maze01 182 88
+prt_maze01 74 12 prt_maze01 58 48
+prt_maze01 74 74 prt_maze01 58 191
+prt_maze01 74 97 prt_maze01 71 11
+prt_maze01 85 13 prt_maze01 22 88
+prt_maze01 85 56 prt_maze01 105 111
+prt_maze01 85 97 prt_maze01 63 128
+prt_maze01 85 146 prt_maze01 142 111
+prt_maze01 85 174 prt_maze02 93 20
+prt_maze01 96 45 prt_maze01 63 128
+prt_maze01 98 154 prt_maze01 102 168
+prt_maze01 99 34 prt_maze01 137 128
+prt_maze01 102 165 prt_maze01 99 31
+prt_maze01 104 74 prt_maze01 14 48
+prt_maze01 105 114 prt_maze01 111 145
+prt_maze01 114 22 prt_maze01 177 71
+prt_maze01 114 56 prt_maze01 176 8
+prt_maze01 114 95 prt_maze01 14 48
+prt_maze01 114 145 prt_maze01 23 128
+prt_maze01 125 105 prt_maze01 14 48
+prt_maze01 125 171 prt_maze01 8 186
+prt_maze01 137 74 prt_maze01 182 88
+prt_maze01 137 125 prt_maze01 191 139
+prt_maze01 139 45 prt_maze01 71 11
+prt_maze01 142 114 prt_maze01 23 128
+prt_maze01 154 22 prt_maze01 139 48
+prt_maze01 154 134 prt_maze01 58 191
+prt_maze01 154 181 prt_maze01 191 175
+prt_maze01 165 22 prt_maze01 63 128
+prt_maze01 166 139 prt_maze01 128 173
+prt_maze01 168 94 prt_maze01 191 139
+prt_maze01 175 45 prt_maze01 58 48
+prt_maze01 175 165 prt_maze01 48 104
+prt_maze01 176 5 prt_maze01 137 128
+prt_maze01 176 34 prt_maze01 8 186
+prt_maze01 177 74 prt_fild01 136 368
+prt_maze01 182 85 prt_maze01 58 48
+prt_maze01 194 15 prt_maze01 52 48
+prt_maze01 194 54 prt_maze01 99 31
+prt_maze01 194 94 prt_maze01 58 191
+prt_maze01 194 139 prt_maze01 22 88
+prt_maze01 194 175 prt_maze01 23 128
+prt_maze02 93 16 prt_maze01 102 168
+prt_maze02 100 182 prt_maze03 182 88
 prt_maze03 100 35 prt_maze03 63 88
 prt_maze03 102 164 prt_maze03 143 111
 prt_maze03 104 115 prt_maze03 22 88
@@ -1745,7 +1729,7 @@ prt_maze03 195 54 prt_maze03 88 96
 prt_maze03 22 195 prt_maze03 65 111
 prt_maze03 22 84 prt_maze03 104 111
 prt_maze03 23 124 prt_maze03 98 151
-prt_maze03 25 4 prt_maze02 95 177
+prt_maze03 182 85 prt_maze02 100 179
 prt_maze03 4 140 prt_maze03 60 192
 prt_maze03 4 186 prt_maze03 151 133
 prt_maze03 4 57 prt_maze03 71 95
@@ -1895,7 +1879,7 @@ tur_dun03 217 71 tur_dun04 100 196
 tur_dun04 100 196 tur_dun03 217 71
 umbala 130 79 um_fild04 215 339
 umbala 129 78 um_fild04 215 340
-umbala 106 285 um_dun01 42 27
+umbala 106 285 yggdrasil01 39 63
 umbala 107 130 um_in 99 63
 umbala 138 129 um_in 99 114
 umbala 125 157 um_in 155 111
@@ -1904,10 +1888,6 @@ umbala 100 203 um_in 163 69
 umbala 107 118 um_in 15 20
 # bungee jump
 #umbala 140 197 nif_in 68 14
-um_dun01 42 27 umbala 106 285
-um_dun01 149 198 um_dun02 52 22
-um_dun02 52 22 um_dun01 149 198
-um_dun02 126 162 yggdrasil01 38 63
 um_fild01 31 374 beach_dun2 258 244
 um_fild01 369 277 um_fild02 22 272
 um_fild01 31 274 beach_dun2 258 244
@@ -1962,9 +1942,7 @@ yuno_fild03 21 162 yuno_fild04 371 147
 yuno_fild04 231 288 yuno 158 13
 yuno_fild04 374 82 yuno_fild03 20 79
 yuno_fild04 374 149 yuno_fild03 21 162
-yuno_fild04 42 370 yuno_fild05 61 33
 yuno_fild04 249 22 ein_fild06 255 358
-yuno_fild05 61 29 yuno_fild04 42 366
 yuno_fild07 73 220 ein_fild06 332 176
 yuno_fild07 179 353 yuno_fild03 179 17
 yuno_fild07 352 292 yuno_fild08 27 275
@@ -2160,7 +2138,6 @@ ra_temsky 99 8 ra_temin 275 231
 ra_temsky 99 135 ra_temsky 99 113
 ra_temsky 137 139 ra_temsky 109 143
 ra_temsky 62 139 ra_temsky 91 143
-rachel 25 125 ra_fild11 353 226
 rachel 275 125 ra_fild12 40 226
 rachel 130 21 ve_fild02 195 377
 que_rachel 130 93 que_rachel 239 258
@@ -2179,12 +2156,8 @@ ra_fild01 306 38 ra_fild04 322 371
 ra_fild04 322 378 ra_fild01 306 43
 ra_fild04 362 351 ra_fild05 39 353
 ra_fild05 33 353 ra_fild04 356 351
-ra_fild05 27 13 ra_fild09 30 337
-ra_fild09 29 343 ra_fild05 31 17
 ra_fild04 263 54 ra_fild08 287 365
 ra_fild08 287 370 ra_fild04 263 60
-ra_fild09 27 238 ra_fild08 360 234
-ra_fild08 368 234 ra_fild09 35 238
 ra_fild04 23 176 ra_fild03 370 172
 ra_fild03 374 168 ra_fild04 29 176
 ra_fild05 348 274 ra_fild06 24 277
@@ -2194,17 +2167,6 @@ lhz_fild01 296 382 ra_fild06 298 25
 ra_fild12 36 225 rachel 270 125
 ra_fild08 165 29 ra_fild12 149 369
 ra_fild12 149 374 ra_fild08 165 36
-ra_fild12 303 27 ra_fild13 295 341
-ra_fild13 295 346 ra_fild12 303 33
-ra_fild11 360 226 rachel 30 125
-ra_fild11 21 290 ra_fild10 379 283
-ra_fild10 384 287 ra_fild11 28 290
-ra_fild11 202 335 ra_fild07 215 32
-ra_fild07 215 27 ra_fild11 201 329
-ra_fild07 168 353 ra_fild02 171 45
-ra_fild02 168 36 ra_fild07 168 349
-ra_fild02 373 275 ra_fild03 28 294
-ra_fild03 23 294 ra_fild02 367 270
 ra_san02 213 280 ra_san01 140 19
 ra_san03 123 283 ra_san01 140 19
 ra_san04 119 104 ra_san01 140 19
@@ -2283,11 +2245,7 @@ veins 218 361 ve_fild06 148 225
 ve_fild06 153 220 veins 218 355
 ve_fild01 366 267 ve_fild02 36 263
 ve_fild01 184 20 ve_fild04 174 334
-ra_fild11 233 27 ve_fild01 243 363
-ve_fild01 243 368 ra_fild11 232 32
 ve_fild01 350 92 ve_fild02 78 133
-ra_fild13 29 308 ve_fild02 380 308
-ve_fild02 385 308 ra_fild13 34 308
 ve_fild02 195 382 rachel 130 25
 ve_fild02 31 263 ve_fild01 361 267
 ve_fild02 73 133 ve_fild01 345 92
@@ -2308,12 +2266,6 @@ yuno_fild06 149 369 hu_fild01 139 37
 hu_fild01 139 35 yuno_fild06 151 369
 hu_fild04 381 187 hu_fild05 34 202
 hu_fild05 32 202 hu_fild04 379 187
-hu_fild05 91 42 hu_fild07 80 369
-hu_fild07 80 371 hu_fild05 91 44
-hu_fild07 56 36 yuno_fild09 47 375
-yuno_fild09 47 377 hu_fild07 56 38
-hu_fild07 226 36 yuno_fild09 220 372
-yuno_fild09 220 374 hu_fild07 226 38
 abbey01 51 9 nameless_n 160 184
 abbey01 87 122 abbey01 13 201
 abbey01 13 204 abbey01 88 118
@@ -2328,6 +2280,8 @@ abyss_02 145 281 abyss_03 116 27
 abyss_03 116 24 abyss_02 145 278
 einbroch 92 280 airplane 224 64
 einbroch 64 234 airport 138 51
+airport 143 43 airport 148 51 1200 c r0 c r0
+airport 143 49 airport 142 40 0 c r0 c r0
 airport 142 61 einbroch 62 246
 airport 124 13 airport 19 21
 airport 19 18 airport 122 16
@@ -2498,30 +2452,16 @@ ein_fild04 343 293 ein_fild05 80 294
 ein_fild05 76 294 ein_fild04 336 292
 ein_fild05 376 183 ein_fild06 47 166
 ein_fild06 42 171 ein_fild05 371 183
-ein_fild02 357 251 yuno_fild04 38 280
-yuno_fild04 33 279 ein_fild02 350 250
-ein_fild01 349 369 yuno_fild05 43 346
-yuno_fild05 41 350 ein_fild01 345 367
-ein_fild01 106 34 ein_fild02 109 358
-ein_fild02 108 364 ein_fild01 106 40
-ein_fild01 234 34 ein_fild02 258 343
-ein_fild02 257 350 ein_fild01 231 40
-ein_fild02 170 29 ein_fild05 172 366
-ein_fild05 172 371 ein_fild02 170 37
+ein_fild01 106 34 ein_fild05 172 371
+ein_fild05 172 371 ein_fild01 106 40
+ein_fild01 28 261 cave 98 22
+cave 98 22 ein_fild01 28 261
 hu_fild01 366 185 hu_fild02 22 168
 hu_fild02 17 168 hu_fild01 361 189
 hu_fild04 47 372 hu_fild02 40 27
 hu_fild02 40 22 hu_fild04 48 368
 hu_fild04 294 379 hu_fild02 280 31
 hu_fild02 283 28 hu_fild04 289 376
-hu_fild05 284 356 hu_fild03 288 26
-hu_fild03 288 19 hu_fild05 276 346
-hu_fild02 374 339 hu_fild03 24 337
-hu_fild03 20 338 hu_fild02 370 339
-hu_fild02 378 162 hu_fild03 30 163
-hu_fild03 25 163 hu_fild02 373 160
-yuno_fild09 377 184 yuno_fild10 44 183
-yuno_fild10 39 183 yuno_fild09 371 184
 ice_dun01 157 10 ra_fild01 233 327
 ice_dun01 146 161 ice_dun02 151 139
 ice_dun02 151 145 ice_dun01 146 157
@@ -2820,67 +2760,60 @@ lhz_in02 265 14 lhz_in02 269 82
 lhz_in02 282 79 lighthalzen 194 48
 
 # Eden HQ Entrace
-prontera 124 76 moc_para01 31 14 c c r0
-prontera 38 212 moc_para01 31 14 c c r0
-prontera 162 326 moc_para01 31 14 c c r0
-prontera 271 213 moc_para01 31 14 c c r0
-#morocc 161 97 moc_para01 31 14 c c r0 does not exist in bRO
+alberta 124 67 moc_para01 31 14 c c r0
+alberta_in 75 39 moc_para01 31 14 c c r0
+aldebaran 133 119 moc_para01 31 14 c c r0
+amatsu 100 145 moc_para01 31 14 c c r0
+ayothaya 221 191 moc_para01 31 14 c c r0
+brasilis 178 227 moc_para01 31 14 c c r0
+comodo 202 151 moc_para01 31 14 c c r0
+dewata 192 193 moc_para01 31 14 c c r0
+einbroch 250 211 moc_para01 31 14 c c r0
+geffen 132 66 moc_para01 31 14 c c r0
+geffen_in 160 104 moc_para01 31 14 c c r0
+gonryun 145 120 moc_para01 31 14 c c r0
+hugel 93 153 moc_para01 31 14 c c r0
+izlude_in 68 162 moc_para01 31 14 c c r0
+lighthalzen 164 86 moc_para01 31 14 c c r0
+louyang 227 107 moc_para01 31 14 c c r0
 moc_ruins 68 164 moc_para01 31 14 c c r0
 moc_prydb1 53 126 moc_para01 31 14 c c r0
-amatsu 100 145 moc_para01 31 14 c c r0
-brasilis 194 221 moc_para01 31 14 c c r0
-geffen 132 66 moc_para01 31 14 c c r0
-#geffen 196 147 moc_para01 31 14 c c r0 does not exist in bRO
+morocc 161 97 moc_para01 31 14 c c r0
+moscovia 209 197 moc_para01 31 14 c c r0
 payon 177 111 moc_para01 31 14 c c r0
-aldebaran 133 119 moc_para01 31 14 c c r0
-einbroch 244 200 moc_para01 31 14 c c r0
-moscovia 220 192 moc_para01 31 14 c c r0
-einbroch 55 202 moc_para01 31 14 c c r0
-yuno 144 189 moc_para01 31 14 c c r0
-lighthalzen 167 102 moc_para01 31 14 c c r0
-alberta 124 67 moc_para01 31 14 c c r0
-dewata 194 168 moc_para01 31 14 c c r0
-# comodo 191 153 moc_para01 31 14 c c r0
-# cmd_fild07 139 134 moc_para01 31 14 c c r0
-gonryun 162 122 moc_para01 31 14 c c r0
-#umbala 96 160 moc_para01 31 14 c c r0
-ayothaya 209 169 moc_para01 31 14 c c r0
-hugel 99 167 moc_para01 31 14 c c r0
-rachel 125 144 moc_para01 31 14 c c r0
-veins 214 122 moc_para01 31 14 c c r0
-alberta_in 75 39 moc_para01 31 14 c c r0
-alberta 27 238 moc_para01 31 14 c c r0
-geffen_in 160 104 moc_para01 31 14 c c r0
 payon_in02 58 58 moc_para01 31 14 c c r0
-izlude 134 98 moc_para01 31 14 c c r0
-izlude_in 68 162 moc_para01 31 14 c c r0
+prontera 124 76 moc_para01 31 14 c c r0
+prt_church 103 78 moc_para01 31 14 c c r0
+rachel 125 144 moc_para01 31 14 c c r0
+umbala 105 158 moc_para01 31 14 c c r0
+veins 220 109 moc_para01 31 14 c c r0
+yuno 144 189 moc_para01 31 14 c c r0
 
 # Eden HQ
-moc_para01 47 39 moc_para01 106 14 c r0
-moc_para01 102 92 moc_para01 111 33
+moc_para01 48 39 moc_para01 106 14
+moc_para01 107 12 moc_para01 48 35
+moc_para01 100 27 moc_para01 47 85
+moc_para01 49 86 moc_para01 103 27
 moc_para01 113 32 moc_para01 105 92
-moc_para01 107 12 moc_para01 47 37
-moc_para01 47 161 moc_para01 47 18
+moc_para01 102 92 moc_para01 111 33
 moc_para01 57 27 moc_para01 162 26
 moc_para01 158 26 moc_para01 55 27
-#moc_para01 57 27 moc_para01 107 12
-# moc_para01 100 27 moc_para01 47 85
-# moc_para01 49 86 moc_para01 103 27
-# moc_para01 113 32 moc_para01 105 92
-# moc_para01 102 92 moc_para01 113 32
-# moc_para01 57 27 moc_para01 107 12
-# moc_para01 158 26 moc_para01 57 27
-# #moc_para01 48 16 moc_para01 48 164
-# moc_para01 48 16 moc_paraup 48 164
-# #moc_para01 47 161 moc_para01 47 18
-# moc_paraup 47 161 moc_para01 47 18
-# #moc_para01 41 187 moc_para01 179 93
-# moc_paraup 41 187 moc_paraup 179 93
-# #moc_para01 179 90 moc_para01 41 185
-# moc_paraup 179 90 moc_paraup 41 185
+moc_para01 48 16 moc_para01 48 164
+moc_para01 47 161 moc_para01 47 18
+moc_para01 41 187 moc_para01 179 93
+moc_para01 179 90 moc_para01 41 185
+moc_para01 29 187 moc_para01 180 159
+moc_para01 180 156 moc_para01 29 185
+moc_para01 17 187 moc_para01 132 159
+moc_para01 132 156 moc_para01 17 185
 moc_para01 30 10 prontera 116 72
+#moc_para01 44 19 moc_fild20 342 198 0 c r0 c #Requires paying 50k first
 
 # Malangdo
+malangdo 219 86 alberta 192 150 1000 c c r1
+malangdo 219 86 izlude 194 180 1000 c c r0
+alberta 200 151 malangdo 217 85 1000 c r1 c c r0
+izlude 182 192 malangdo 217 85 1000 c r1 c c r0
 mal_in01 18 161 malangdo 112 167
 malangdo 112 167 mal_in01 17 163
 mal_in01 75 174 mal_in01 18 173
@@ -2955,3 +2888,262 @@ new_5-1 148 112 new_5-2 100 9
 new_5-2 100 6 new_5-1 148 112
 moc_para01 100 27 moc_para01 102 92
 
+man_fild02 138 40 manuk 112 357
+manuk 112 357 man_fild02 138 45
+man_fild01 373 238 man_fild02 32 262
+man_fild02 32 262 man_fild01 367 238
+mid_camp 336 171 man_fild01 36 235 c r0
+man_fild01 103 58 man_fild03 84 366
+man_fild03 84 366 man_fild01 103 58
+mid_campin 89 99 mid_camp 214 249
+mid_camp 214 249 mid_campin 89 102
+mid_campin 162 82 mid_campin 113 114
+mid_campin 113 114 mid_campin 165 82
+mid_camp 13 143 spl_fild02 379 143 c r0
+spl_fild02 382 143 mid_camp 16 143
+mid_campin 162 170 mid_campin 111 128
+mid_campin 111 128 mid_campin 165 170
+mid_campin 113 120 mid_campin 162 170
+mid_campin 162 126 mid_campin 110 120
+mid_campin 117 178 mid_campin 94 141
+mid_campin 94 141 mid_campin 117 181
+mid_campin 65 178 mid_campin 86 141
+mid_campin 86 141 mid_campin 66 181
+mid_campin 25 168 mid_campin 68 128
+mid_campin 68 128 mid_campin 22 168
+mid_campin 66 120 mid_campin 25 168
+mid_campin 66 114 mid_campin 25 124
+mid_campin 25 124 mid_campin 70 120
+mid_campin 25 80 mid_campin 70 114
+man_in01 275 41 manuk 311 142
+manuk 311 142 man_in01 277 41
+dic_dun01 165 227 dic_dun01 87 212
+dic_dun01 87 212 dic_dun01 169 227
+dic_dun01 28 156 dic_dun01 371 228
+dic_dun01 371 228 dic_dun01 32 156
+moc_prydb1 103 54 moc_prydn1 93 96 5000 c r0 c c r0 c c r0 c c r0 c
+moc_prydn1 94 98 moc_prydb1 100 57 0 c r0 c
+moc_prydn1 223 9 moc_prydn2 192 8
+moc_prydn2 195 8 moc_prydn1 220 9
+
+
+# dewata #need add step npc talk
+dewata 44 252 dew_fild01 373 212
+dew_fild01 375 212 dewata 46 256
+dew_fild01 57 273 dew_in01 15 33
+dew_fild01 48 65 dew_dun02 302 30
+dew_dun02 305 30 dew_fild01 50 65
+
+# Lasagna #need add step npc talk
+lasa_fild02 348 244 lasa_dun01 24 143
+lasa_dun01 18 143 lasa_fild02 344 243
+lasa_dun_q 190 14 lasa_dun01 152 98
+lasa_dun01 157 98 lasa_dun02 22 171
+lasa_dun02 18 171 lasa_dun01 153 98
+lasa_dun02 146 58 lasa_dun03 190 18
+lasa_dun03,190,15 lasa_dun02,146 54
+lasa_fild01 134 381 lasagna 153 58
+lasagna 150 54 lasa_fild01 131 378
+lasa_fild01 341 375 lasagna 327 56
+lasagna 327 51 lasa_fild01 344 371
+lasagna 358 91 lasa_fild02 20 98
+lasa_fild02 16 98 lasagna 355 92
+lasa_in01 159 61 lasagna 68 202
+conch_in 60 61 lasagna 206 323
+conch_in 51 60 conch_in 31 60
+conch_in 34 60 conch_in 53 59
+conch_in 63 53 conch_in 63 33
+conch_in 63 35 conch_in 64 55
+conch_in 64 66 conch_in 63 89
+conch_in 63 87 conch_in 63 64
+conch_in 101 53 conch_in 101 33
+conch_in 101 35 conch_in 102 55
+conch_in 101 66 conch_in 101 89
+conch_in 102 87 conch_in 101 64
+conch_in 137 53 conch_in 139 33
+conch_in 139 35 conch_in 138 55
+conch_in 137 66 conch_in 139 89
+conch_in 140 87 conch_in 137 64
+conch_in 142 60 conch_in 162 61
+conch_in 159 61 conch_in 140 59
+brasilis 316 57 alberta 224 115 0 c r0
+alberta 247 115 brasilis 314 60 0 c c r0 c
+
+# Rock Ridge
+#alberta 240 103 harboro1 70 215 10000 c r0 n
+#harboro1 60 215 alberta 172 131 c r0 n
+harboro1 241 218 har_in01 18 18
+harboro1 362 206 rockrdg1 37 246
+rockmi1 247 16 rockrdg2 304 350
+rockrdg2 304 350 rockmi1 247 19
+harboro1 312 193 har_in01 26 87
+har_in01 26 90 harboro1 312 193
+har_in01 18 15 harboro1 241 218
+har_in01 34 28 harboro1 241 218
+har_in01 99 30 har_in01 34 31
+har_in01 34 28 har_in01 99 27
+rockrdg1 33 246 harboro1 362 206
+rockrdg1 371 206 rockrdg2 31 207
+rockrdg2 27 207 rockrdg1 371 206
+
+#Verus
+#yuno_fild07 216 157 verus04 122 217 c r0 c c r1 c c n
+#verus04 122 218 yuno_fild07 230 156 c r0 c r1 n
+verus04 204 163 ver_tunn 13 35
+ver_tunn 10 36 verus04 202 165
+ver_eju 107 36 ver_tunn 84 82
+ver_tunn 84 86 ver_eju 113 38
+ver_eju 10 148 juperos_01 242 84
+juperos_01 245 87 ver_eju 13 148
+verus04 121 267 verus03 121 20
+verus03 122 17 verus04 121 264
+verus04 44 267 verus03 44 20
+verus03 44 17 verus04 44 264
+verus02 72 16 verus03 169 255
+verus03 169 259 verus02 72 19
+verus03 52 254 verus01 243 62
+verus01 247 58 verus03 55 251
+#verus01 123 181 un_bunker 98 91 c r0 c n
+un_bunker 98 85 verus01 115 190
+un_bunker 97 124 un_bunker 100 144
+un_bunker 97 141 un_bunker 98 121
+un_bunker 75 128 un_bunker 276 196
+un_bunker 275 191 un_bunker 76 121
+un_bunker 69 118 un_bunker 53 117
+un_bunker 57 118 un_bunker 72 117
+un_bunker 47 135 un_bunker 37 134
+un_bunker 40 135 un_bunker 50 134
+un_bunker 60 169 un_bunker 72 168
+un_bunker 69 167 un_bunker 57 168
+un_bunker 60 183 un_bunker 75 235
+un_bunker 71 236 un_bunker 57 182
+un_bunker 51 196 un_bunker 68 378
+un_bunker 67 375 un_bunker 52 193
+un_bunker 31 196 un_bunker 22 378
+un_bunker 21 375 un_bunker 32 193
+un_bunker 23 190 un_bunker 21 256
+un_bunker 24 256 un_bunker 26 190
+un_bunker 24 276 un_bunker 45 275
+un_bunker 41 275 un_bunker 21 276
+un_bunker 124 236 un_bunker 140 184
+un_bunker 137 185 un_bunker 120 235
+un_bunker 147 196 un_bunker 106 378
+un_bunker 105 375 un_bunker 148 193
+un_bunker 167 196 un_bunker 152 378
+un_bunker 151 375 un_bunker 168 193
+un_bunker 174 190 un_bunker 172 229
+un_bunker 169 230 un_bunker 171 189
+un_bunker 137 168 un_bunker 122 167
+un_bunker 126 168 un_bunker 140 167
+un_bunker 140 118 un_bunker 125 117
+un_bunker 128 118 un_bunker 144 117
+un_bunker 119 128 un_bunker 319 196
+un_bunker 320 191 un_bunker 120 121
+un_bunker 324 200 un_bunker 344 199
+un_bunker 339 200 un_bunker 321 199
+un_bunker 350 214 un_bunker 368 213
+un_bunker 365 214 un_bunker 347 213
+un_bunker 337 236 un_bunker 323 235
+un_bunker 326 236 un_bunker 340 235
+un_bunker 337 262 un_bunker 321 289
+un_bunker 324 290 un_bunker 340 261
+un_bunker 343 270 un_bunker 382 328
+un_bunker 381 325 un_bunker 344 267
+un_bunker 370 264 un_bunker 388 263
+un_bunker 385 264 un_bunker 367 263
+un_bunker 271 290 un_bunker 255 261
+un_bunker 258 262 un_bunker 274 289
+un_bunker 281 279 un_bunker 282 263
+un_bunker 281 266 un_bunker 282 282
+un_bunker 313 266 un_bunker 314 282
+un_bunker 313 279 un_bunker 314 262
+un_bunker 297 206 un_bunker 298 224
+un_bunker 297 221 un_bunker 298 203
+un_bunker 271 200 un_bunker 258 199
+un_bunker 245 214 un_bunker 226 213
+un_bunker 230 214 un_bunker 248 213
+un_bunker 258 236 un_bunker 272 235
+un_bunker 269 236 un_bunker 255 235
+un_bunker 249 268 un_bunker 390 380
+un_bunker 389 377 un_bunker 250 265
+un_bunker 217 262 un_bunker 213 279
+un_bunker 216 300 un_bunker 216 345
+un_bunker 213 346 un_bunker 213 299
+un_bunker 216 280 un_bunker 220 261
+un_bunker 262 200 un_bunker 274 199
+un_bunker 297 192 un_bunker 298 181
+un_bunker 297 186 un_bunker 298 196
+un_bunker 229 163 un_bunker 159 52
+un_bunker 164 51 un_bunker 233 164
+un_bunker 366 164 un_bunker 31 51
+un_bunker 27 52 un_bunker 361 163
+
+# Atelier
+prontera 272 108 s_atelier 13 119
+s_atelier 10 119 prontera 268 109
+s_atelier 76 128 s_atelier 31 128
+s_atelier 31 128 s_atelier 76 125
+s_atelier 166 72 s_atelier 117 71
+s_atelier 117 71 s_atelier 171 72
+rachel 180 115 s_atelier 130 70
+s_atelier 131 75 rachel 180 118
+s_atelier 159 130 s_atelier 108 129
+s_atelier 108 129 s_atelier 159 125
+yuno 278 67 s_atelier 109 123
+s_atelier 105 123 yuno 275 67
+s_atelier 80 66 s_atelier 32 64
+s_atelier 32 64 s_atelier 80 63
+lighthalzen 41 52 s_atelier 18 75
+s_atelier 18 79 lighthalzen 41 56
+
+# Ep 16.1 - Prontera Castle
+prt_cas 31 120 prt_cas 197 148
+prt_cas 197 148 prt_cas 31 117
+prt_cas 27 47 prt_cas 178 148
+prt_cas 178 148 prt_cas 27 43
+prt_cas 164 177 prt_cas 54 152
+prt_cas 54 152 prt_cas 164 172
+prt_cas_q 154 8 prt_cas 152 163
+prt_cas 152 163 prt_cas_q 150 8
+prt_cas_q 130 8 prt_cas 152 163
+prt_cas_q 34 28 prt_cas_q 130 8
+prt_cas_q 130 32 prt_cas_q 34 78
+prt_cas_q 34 78 prt_cas_q 134 32
+prt_cas_q 130 56 prt_cas_q 34 128
+prt_cas_q 34 128 prt_cas_q 134 56
+prt_cas_q 34 178 prt_cas_q 130 80
+prt_cas_q 130 80 prt_cas_q 30 178
+prt_cas 268 176 prt_cas 110 152
+prt_cas 110 152 prt_cas 268 172
+prt_cas 278 163 prt_cas 110 152
+prt_cas_q 132 119 prt_cas 278 163
+prt_cas_q 74 21 prt_cas_q 153 119
+prt_cas_q 153 119 prt_cas_q 78 21
+prt_cas_q 74 77 prt_cas_q 153 143
+prt_cas_q 153 143 prt_cas_q 78 77
+prt_cas_q 153 167 prt_cas_q 74 131
+prt_cas_q 74 131 prt_cas_q 142 173
+prt_cas_q 74 189 prt_cas_q 153 191
+prt_cas_q 153 191 prt_cas_q 78 189
+prt_cas 174 108 prt_cas 235 148
+prt_cas 235 148 prt_cas 174 104
+prt_cas 174 40 prt_cas 253 148
+prt_cas 253 148 prt_cas 174 37
+prt_cas 93 208 prt_cas 216 184
+prt_cas 216 184 prt_cas 93 212
+prt_cas 320 178 prt_cas 41 275
+prt_cas 41 275 prt_cas 320 182
+prt_cas 247 111 prt_cas 174 234
+prt_cas 174 234 prt_cas 247 107
+prt_pri00 54 139 prt_cas 188 258
+prt_pri00 58 128 prt_lib 9 28 0 c r0 n
+prt_pri00 58 128 prt_pri00 53 128 0 c r1 n
+prt_cas 188 258 prt_pri00 54 134
+prt_lib 9 24 prt_pri00 60 127
+prt_lib_q 91 85 prt_lib 89 43 0 c r1 n
+prontera 156 358 prt_cas 216 146
+prt_cas 216 142 prontera 156 354
+prt_cas 82 175 prt_gld 159 30
+prt_gld 159 24 prt_cas 82 17
+prt_q 155 358 prt_lib_q 9 25
+prt_lib_q 9 25 prt_q 155 354

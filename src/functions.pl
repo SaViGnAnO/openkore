@@ -65,6 +65,11 @@ sub mainLoop {
 	}
 
 
+	if ($state == STATE_INITIALIZED && $Settings::command) {
+		Commands::run($Settings::command);
+		$Settings::command = undef;
+	}
+
 	if ($state == STATE_INITIALIZED) {
 		Plugins::callHook('mainLoop_pre');
 		mainLoop_initialized();
@@ -154,6 +159,10 @@ sub loadDataFiles {
 		loader => [\&parseItemsControl, \%items_control],
 		internalName => 'items_control.txt',
 		autoSearch => 0);
+	Settings::addControlFile(Settings::getBuyerShopFilename(),
+		loader => [\&parseShopControl, \%buyer_shop],
+		internalName => 'buyer_shop.txt',
+		autoSearch => 0);
 	Settings::addControlFile(Settings::getShopFilename(),
 		loader => [\&parseShopControl, \%shop],
 		internalName => 'shop.txt',
@@ -205,8 +214,6 @@ sub loadDataFiles {
 	# Load all other tables
 	Settings::addTableFile('cities.txt',
 		loader => [\&parseROLUT, \%cities_lut]);
-	Settings::addTableFile('commanddescriptions.txt',
-		loader => [\&parseCommandsDescription, \%descriptions], mustExist => 0);
 	Settings::addTableFile('directions.txt',
 		loader => [\&parseDataFile2, \%directions_lut]);
 	Settings::addTableFile('elements.txt',
@@ -240,7 +247,7 @@ sub loadDataFiles {
 	Settings::addTableFile('packetdescriptions.txt',
 		loader => [\&parseSectionedFile, \%packetDescriptions], mustExist => 0);
 	Settings::addTableFile('portals.txt',
-		loader => [\&parsePortals, \%portals_lut]);
+		loader => [\&parsePortals, \%portals_lut, \@portals_lut_missed]);
 	Settings::addTableFile('portalsLOS.txt',
 		loader => [\&parsePortalsLOS, \%portals_los], createIfMissing => 1);
 	Settings::addTableFile('sex.txt',
@@ -267,7 +274,14 @@ sub loadDataFiles {
 	Settings::addTableFile('skillsencore.txt', loader => [\&parseList, \%skillsEncore]);
 	Settings::addTableFile('quests.txt', loader => [\&parseROQuestsLUT, \%quests_lut], mustExist => 0);
 	Settings::addTableFile('effects.txt', loader => [\&parseDataFile2, \%effectName], mustExist => 0);
-	Settings::addTableFile('msgstringtable.txt', loader => [\&parseArrayFile, \@msgTable], mustExist => 0);
+	Settings::addTableFile('msgstringtable.txt', loader => [\&parseArrayFile, \@msgTable, { hide_comments => 0 }], mustExist => 0);
+	Settings::addTableFile('hateffect_id_handle.txt', loader => [\&parseDataFile2, \%hatEffectHandle]);
+	Settings::addTableFile('hateffect_name.txt', loader => [\&parseDataFile2, \%hatEffectName], mustExist => 0);
+	Settings::addTableFile('item_stack_limit.txt', loader => [\&parseItemStackLimit, \%itemStackLimit]);
+	Settings::addTableFile('ITEMOPTION_id_handle.txt', loader => [\&parseDataFile2, \%itemOptionHandle], mustExist => 0);
+	Settings::addTableFile('item_options.txt', loader => [\&parseROLUT, \%itemOption_lut], mustExist => 0);
+	Settings::addTableFile('title_name.txt',loader => [\&parseDataFile2, \%title_lut], mustExist => 0);
+	Settings::addTableFile('attendance_rewards.txt',loader => [\&parseAttendanceRewards, \%attendance_rewards], mustExist => 0);
 
 	use utf8;
 
@@ -293,6 +307,8 @@ sub loadDataFiles {
 	}
 	return if $quit;
 
+	Settings::update_log_filenames();
+
 	Plugins::callHook('start3');
 
 	if ($config{'adminPassword'} eq 'x' x 10) {
@@ -316,7 +332,7 @@ sub initNetworking {
 	my $XKore_version = $config{XKore};
 	eval {
 		$clientPacketHandler = Network::ClientReceive->new;
-		
+
 		if ($XKore_version eq "1") {
 			# Inject DLL to running Ragnarok process
 			require Network::XKore;
@@ -355,7 +371,7 @@ sub initNetworking {
 		$bus = new Bus::Client(host => $host, port => $port, userAgent => $userAgent);
 		our $busMessageHandler = new Bus::Handlers($bus);
 	}
-	
+
 	Network::PaddedPackets::init();
 }
 
@@ -364,11 +380,11 @@ sub initPortalsDatabase {
 	# -1: skip compile
 	#  0: ask user
 	#  1: auto compile
-	
+
 	# TODO: detect when another instance already compiles portals?
-	
+
 	return if $config{portalCompile} < 0;
-	
+
 	Log::message(T("Checking for new portals... "));
 	if (compilePortals_check()) {
 		Log::message(T("found new portals!\n"));
@@ -437,7 +453,7 @@ sub processServerSettings {
 
 	# Parse server settings
 	my $master = $masterServer = $masterServers{$config{master}};
-	
+
 	# Stop if server now marked as dead
 	if ($master->{dead}) {
 		$interface->errorDialog($master->{dead_message} || TF("Server you've selected (%s) is now marked as dead.", $master->{title} || $config{master}));
@@ -457,7 +473,7 @@ sub processServerSettings {
 		$quit = 1;
 		return;
 	}
-	
+
 	foreach my $serverOption ('storageEncryptKey', 'gameGuard','paddedPackets','paddedPackets_attackID',
 				'paddedPackets_skillUseID') {
 		if ($master->{$serverOption} ne '' && !(defined $config{$serverOption})) {
@@ -470,12 +486,12 @@ sub processServerSettings {
 			configModify($serverOption, $master->{$serverOption});
 		}
 	}
-	
+
 	# Process adding Custom Table folders
 	if($masterServer->{addTableFolders}) {
 		Settings::addTablesFolders($masterServer->{addTableFolders});
 	}
-	
+
 	# Process setting custom recvpackets option
 	Settings::setRecvPacketsName($masterServer->{recvpackets} && $masterServer->{recvpackets} ne '' ? $masterServer->{recvpackets} : Settings::getRecvPacketsFilename() );
 }
@@ -493,18 +509,13 @@ sub finalInitialization {
 	$totalJobExp = 0;
 	$startTime_EXP = time;
 	$taskManager = new TaskManager();
-	# run 'permanent' tasks
-	for (qw/Task::RaiseStat Task::RaiseSkill/) {
-		eval "require $_";
-		$taskManager->add($_->new);
-	}
 
 	if (DEBUG) {
 		# protect various stuff from autovivification
-		
+
 		require Utils::BlessedRefTie;
 		tie $char, 'Tie::BlessedRef';
-		
+
 		require Utils::ActorHashTie;
 		tie %items, 'Tie::ActorHash';
 		tie %monsters, 'Tie::ActorHash';
@@ -513,6 +524,7 @@ sub finalInitialization {
 		tie %npcs, 'Tie::ActorHash';
 		tie %portals, 'Tie::ActorHash';
 		tie %slaves, 'Tie::ActorHash';
+		tie %elementals, 'Tie::ActorHash';
 	}
 
 	$itemsList = new ActorList('Actor::Item');
@@ -522,7 +534,11 @@ sub finalInitialization {
 	$npcsList = new ActorList('Actor::NPC');
 	$portalsList = new ActorList('Actor::Portal');
 	$slavesList = new ActorList('Actor::Slave');
-	foreach my $list ($itemsList, $monstersList, $playersList, $petsList, $npcsList, $portalsList, $slavesList) {
+	$elementalsList = new ActorList('Actor::Elemental');
+	$venderItemList = InventoryList->new;
+	$storeList = InventoryList->new;
+	$cashList = InventoryList->new;
+	foreach my $list ($itemsList, $monstersList, $playersList, $petsList, $npcsList, $portalsList, $slavesList, $elementalsList) {
 		$list->onAdd()->add(undef, \&actorAdded);
 		$list->onRemove()->add(undef, \&actorRemoved);
 		$list->onClearBegin()->add(undef, \&actorListClearing);
@@ -531,13 +547,13 @@ sub finalInitialization {
 	StdHttpReader::init();
 	initStatVars();
 	initRandomRestart();
-	initUserSeed();
+#	initUserSeed();
 	initConfChange();
 	Log::initLogFiles();
 	$timeout{'injectSync'}{'time'} = time;
 
 	Log::message("\n");
-	
+
 	Log::message("Initialized, use 'connect' to continue\n") if $Settings::no_connect;
 
 	Plugins::callHook('initialized');
@@ -587,6 +603,7 @@ sub initConnectVars {
 		delete $char->{muted};
 		delete $char->{party};
 		delete $char->{statuses};
+		$char->{party}{joined} = 0;
 	}
 	undef @skillsID;
 	undef @partyUsersID;
@@ -611,7 +628,9 @@ sub initMapChangeVars {
 		delete $char->{warp};
 		delete $char->{casting};
 		delete $char->{homunculus}{appear_time} if $char->{homunculus};
-		$char->inventory->clear();
+		$char->inventory->onMapChange();
+		$char->cart->onMapChange(); # Clear the cart but do not close it.
+		$char->storage->close() if ($char->storage->isReady());
 	}
 	$timeout{play}{time} = time;
 	$timeout{ai_sync}{time} = time;
@@ -636,12 +655,7 @@ sub initMapChangeVars {
 	undef %spells;
 	undef %incomingParty;
 	undef %talk;
-	$ai_v{cart_time} = time + 60;
-	$ai_v{inventory_time} = time + 60;
 	$ai_v{temp} = {};
-	$cart{inventory} = [];
-	delete $storage{opened};
-	undef @venderItemList;
 	undef $venderID;
 	undef $venderCID;
 	undef @venderListsID;
@@ -659,7 +673,17 @@ sub initMapChangeVars {
 	undef $repairList;
 	undef $devotionList;
 	undef $cookingList;
+	undef $makableList;
+	undef $rodexList;
+	undef $rodexWrite;
+	undef $skillExchangeItem;
+	undef $refineUI;
+	undef $currentCookingType;
+	undef $mergeItemList;
 	$captcha_state = 0;
+	$universalCatalog{open} = 0;
+	$universalCatalog{has_next} = 0;
+	delete $universalCatalog{type};
 
 	$itemsList->clear();
 	$monstersList->clear();
@@ -668,12 +692,19 @@ sub initMapChangeVars {
 	$portalsList->clear();
 	$npcsList->clear();
 	$slavesList->clear();
-
+	$elementalsList->clear();
+	$venderItemList->clear;
+	$storeList->clear;
+	$cashList->clear;
+	
+	@{$universalCatalog{list}} = ();
 	@unknownPlayers = ();
 	@unknownNPCs = ();
 	@sellList = ();
 
 	$shopstarted = 0;
+	$buyershopstarted = 0;
+	$bankingopened = 0;
 	$timeout{ai_shop}{time} = time;
 	$timeout{ai_storageAuto}{time} = time + 5;
 	$timeout{ai_buyAuto}{time} = time + 5;
@@ -685,16 +716,7 @@ sub initMapChangeVars {
 
 	Plugins::callHook('packet_mapChange');
 
-	$logAppend = ($config{logAppendUsername}) ? "_$config{username}_$config{char}" : '';
-	$logAppend = ($config{logAppendServer}) ? "_$servers[$config{'server'}]{'name'}".$logAppend : $logAppend;
-	
-	if ($config{logAppendUsername} && index($Settings::storage_log_file, $logAppend) == -1) {
-		$Settings::chat_log_file     = substr($Settings::chat_log_file,    0, length($Settings::chat_log_file)    - 4) . "$logAppend.txt";
-		$Settings::storage_log_file  = substr($Settings::storage_log_file, 0, length($Settings::storage_log_file) - 4) . "$logAppend.txt";
-		$Settings::shop_log_file     = substr($Settings::shop_log_file,    0, length($Settings::shop_log_file)    - 4) . "$logAppend.txt";
-		$Settings::monster_log_file  = substr($Settings::monster_log_file, 0, length($Settings::monster_log_log)  - 4) . "$logAppend.txt";
-		$Settings::item_log_file     = substr($Settings::item_log_file,    0, length($Settings::item_log_file)    - 4) . "$logAppend.txt";
-	}
+	Settings::update_log_filenames();
 }
 
 # Initialize variables when your character logs in
@@ -721,6 +743,11 @@ sub mainLoop_initialized {
 
 	# Handle connection states
 	$net->checkConnection();
+	
+	if (defined $timeout{'char_login_pause'}{'time'} && timeOut($timeout{'char_login_pause'})) {
+		CharacterLogin();
+		undef $timeout{'char_login_pause'}{'time'};
+	}
 
 	# Receive and handle data from the RO server
 	my $data = $net->serverRecv;
@@ -807,7 +834,7 @@ sub mainLoop_initialized {
 		undef $conState_tries;
 		initRandomRestart();
 	}
-	
+
 	Misc::checkValidity("mainLoop_part2.3");
 
 	# Automatically switch to a different config file
@@ -868,7 +895,7 @@ sub mainLoop_initialized {
 	#processStatisticsReporting() unless ($sys{sendAnonymousStatisticReport} eq "0");
 
 	Misc::checkValidity("mainLoop_part2.4");
-	
+
 	# Set interface title
 	my $charName;
 	my $title;
@@ -877,16 +904,16 @@ sub mainLoop_initialized {
 		my ($basePercent, $jobPercent, $weight, $pos);
 
 		assert(defined $char);
-		$basePercent = sprintf("%.2f", $char->{exp} / $char->{exp_max} * 100) if ($char->{exp_max});
-		$jobPercent = sprintf("%.2f", $char->{exp_job} / $char->{exp_job_max} * 100) if ($char->{exp_job_max});
-		$weight = int($char->{weight} / $char->{weight_max} * 100) . "%" if ($char->{weight_max});
+		$basePercent = sprintf("%.2f", $char->exp_base_percent);
+		$jobPercent = sprintf("%.2f",$char->exp_job_percent);
+		$weight = int($char->weight_percent) . "%";
 		$pos = " : $char->{pos_to}{x},$char->{pos_to}{y} " . $field->name if ($char->{pos_to} && $field);
-
+		my $aiSeq = join(",", @ai_seq);
 		# Translation Comment: Interface Title with character status
-		$title = TF("%s B%s (%s), J%s (%s) : w%s%s - %s",
+		$title = TF("%s B%s (%s), J%s (%s) : w%s%s [%s] - %s",
 			$charName, $char->{lv}, $basePercent . '%',
 			$char->{lv_job}, $jobPercent . '%',
-			$weight, $pos, $Settings::NAME);
+			$weight, $pos, $aiSeq, $Settings::NAME);
 
 	} elsif ($net->getState() == Network::NOT_CONNECTED) {
 		# Translation Comment: Interface Title

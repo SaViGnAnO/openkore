@@ -11,65 +11,47 @@
 #############################################################################
 # bRO (Brazil)
 package Network::Receive::bRO;
+
 use strict;
-use Log qw(warning);
-use base 'Network::Receive::ServerType0';
-
-
-# Sync_Ex algorithm developed by Fr3DBr
+use base qw(Network::Receive::ServerType0);
 
 sub new {
 	my ($class) = @_;
 	my $self = $class->SUPER::new(@_);
 	
 	my %packets = (
-		'0097' => ['private_message', 'v Z24 V Z*', [qw(len privMsgUser flag privMsg)]], # -1
+		'0097' => ['private_message', 'v Z24 V Z*', [qw(len privMsgUser flag privMsg)]],
+		'009D' => ['item_exists', 'a4 V C v3 C2', [qw(ID nameID identified x y amount subx suby)]],
+		'009E' => ['item_appeared', 'a4 V C v2 C2 v', [qw(ID nameID identified x y subx suby amount)]],
+		'01C8' => ['item_used', 'a2 V a4 v C', [qw(ID itemID actorID remaining success)]],
+		'09FD' => ['actor_moved', 'v C a4 a4 v3 V v2 V2 v V v6 a4 a2 v V C2 a6 C2 v2 V2 C v Z*', [qw(len object_type ID charID walk_speed opt1 opt2 option type hair_style weapon shield lowhead tick tophead midhead hair_color clothes_color head_dir costume guildID emblemID manner opt3 stance sex coords xSize ySize lv font maxHP HP isBoss opt4 name)]],
+		'09FE' => ['actor_connected', 'v C a4 a4 v3 V v2 V2 v7 a4 a2 v V C2 a3 C3 v2 V2 C v Z*', [qw(len object_type ID charID walk_speed opt1 opt2 option type hair_style weapon shield lowhead tophead midhead hair_color clothes_color head_dir costume guildID emblemID manner opt3 stance sex coords xSize ySize lv font maxHP HP isBoss opt4 name)]],
+		'09FF' => ['actor_exists', 'v C a4 a4 v3 V v2 V2 v7 a4 a2 v V C2 a3 C3 v2 V2 C v Z*', [qw(len object_type ID charID walk_speed opt1 opt2 option type hair_style weapon shield lowhead tophead midhead hair_color clothes_color head_dir costume guildID emblemID manner opt3 stance sex coords xSize ySize lv font maxHP HP isBoss opt4 name)]],
+		'0A05' => ['rodex_add_item', 'C a2 v V C4 a16 a25 v a5', [qw(fail ID amount nameID type identified broken upgrade cards options weight unknow)]],   # 63
+		'0A09' => ['deal_add_other', 'V C V C3 a16 a25', [qw(nameID type amount identified broken upgrade cards options)]],
+		'0A0A' => ['storage_item_added', 'a2 V V C4 a16 a25', [qw(ID amount nameID type identified broken upgrade cards options)]],
+		'0A0B' => ['cart_item_added', 'a2 V V C4 a16 a25', [qw(ID amount nameID type identified broken upgrade cards options)]],
+		'0A37' => ['inventory_item_added', 'a2 v V C3 a16 V C2 a4 v a25 C v', [qw(ID amount nameID identified broken upgrade cards type_equip type fail expire unknown options favorite viewID)]],		
 	);
 	
-	# Sync Ex Reply Array 
-	$self->{sync_ex_reply} = {
-		'0367', '02C4', '085A', '0884', '085B', '0885', '085C', '0886', '085D', '0887', 
-		'085E', '022D', '085F', '0889', '0860', '088A', '0861', '088B', '0862', '088C', 
-		'0863', '088D', '0864', '088E', '0865', '088F', '0866', '0890', '0867', '0891', 
-		'0868', '0892', '0869', '0893', '086A', '0894', '086B', '0895', '086C', '0896', 
-		'0940', '0897', '086D', '0898', '086F', '0899', '0870', '089A', '0871', '089B', 
-		'0872', '089C', '0873', '089D', '0874', '089E', '0875', '089F', '0876', '08A0', 
-		'0877', '08A1', '0878', '08A2', '0879', '08A3', '087A', '08A4', '087B', '08A5', 
-		'087C', '08A6', '087D', '08A7', '087E', '08A8', '087F', '08A9', '0880', '08AA', 
-		'0881', '08AB', '0882', '08AC', '0883', '08AD', '0917', '0941', '0918', '0942', 
-		'0919', '0943', '091A', '0944', '091B', '0945', '091C', '0946', '091D', '0947', 
-		'091E', '0948', '091F', '0949', '0920', '094A', '0921', '094B', '0922', '094C', 
-		'0923', '094D', '0924', '094E', '0925', '094F', '0926', '0950', '0927', '0951', 
-		'0928', '0952', '0929', '0953', '092A', '0954', '092B', '0955', '092C', '0956', 
-		'092D', '0957', '0361', '0958', '092F', '0959', '0930', '095A', '0931', '095B', 
-		'0932', '095C', '0933', '095D', '0934', '095E', '0935', '095F', '0936', '0960', 
-		'0937', '0961', '0938', '0962', '0939', '0963', '093A', '0964', '093B', '0965', 
-		'093C', '0966', '093D', '0967', '093E', '0968', '093F', '0969'
-	};
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
 	
-	foreach my $key (keys %{$self->{sync_ex_reply}}) { $packets{$key} = ['sync_request_ex']; }
-	foreach my $switch (keys %packets) { $self->{packet_list}{$switch} = $packets{$switch}; }
+	my %handlers = qw(
+		received_characters 099D
+		received_characters_info 082D
+		sync_received_characters 09A0
+		account_server_info 0AC4
+	);
+
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+
+	$self->{vender_items_list_item_pack} = 'V v2 C V C3 a16 a25';
+	$self->{npc_store_info_pack} = "V V C V";
+	$self->{buying_store_items_list_pack} = "V v C V";
+	$self->{makable_item_list_pack} = "V4";
+	$self->{rodex_read_mail_item_pack} = "v V C3 a16 a4 C a4 a25";
 	
 	return $self;
 }
-
-sub items_nonstackable {
-	my ($self, $args) = @_;
-
-	my $items = $self->{nested}->{items_nonstackable};
-
-	if($args->{switch} eq '00A4' || $args->{switch} eq '00A6' || $args->{switch} eq '0122') {
-		return $items->{type4};
-	} elsif ($args->{switch} eq '0295' || $args->{switch} eq '0296' || $args->{switch} eq '0297') {
-		return $items->{type4};
-	} elsif ($args->{switch} eq '02D0' || $args->{switch} eq '02D1' || $args->{switch} eq '02D2') {
-		return  $items->{type4};
-	} else {
-		warning("items_nonstackable: unsupported packet ($args->{switch})!\n");
-	}
-}
-
-*parse_quest_update_mission_hunt = *Network::Receive::parse_quest_update_mission_hunt_v2;
-*reconstruct_quest_update_mission_hunt = *Network::Receive::reconstruct_quest_update_mission_hunt_v2;
 
 1;

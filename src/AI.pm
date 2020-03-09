@@ -51,6 +51,7 @@ our @EXPORT = (
 	ai_skillUse
 	ai_skillUse2
 	ai_storageAutoCheck
+	ai_canOpenStorage
 	cartGet
 	cartAdd
 	ai_talkNPC
@@ -82,7 +83,22 @@ use constant MANUAL => 1;
 # AI is turned on.
 use constant AUTO => 2;
 
+# Do not change $AI::AI directly, use AI::state instead
+our $AI = AUTO;
+
 ### CATEGORY: Functions
+
+sub state {
+	if (defined $_[0]) {
+		if ($_[0] != OFF && $_[0] != MANUAL && $_[0] != AUTO) {
+			error "Invalid AI state value given to AI::state (".($_[0])."). Ignoring state change.\n";
+			return;
+		}
+		Plugins::callHook('AI_state_change', {old => $AI, new => $_[0]});
+		$AI = $_[0];
+	}
+	return $AI;
+}
 
 sub action {
 	my $i = (defined $_[0] ? $_[0] : 0);
@@ -232,7 +248,7 @@ sub ai_partyfollow {
 
 	my %master;
 	$master{id} = main::findPartyUserID($config{followTarget});
-	if ($master{id} ne "" && !AI::inQueue("storageAuto","storageGet","sellAuto","buyAuto")) {
+	if ($master{id} ne "" && !AI::inQueue("storageAuto","transferItems","sellAuto","buyAuto")) {
 
 		$master{x} = $char->{party}{users}{$master{id}}{pos}{x};
 		$master{y} = $char->{party}{users}{$master{id}}{pos}{y};
@@ -294,7 +310,7 @@ sub ai_getAggressives {
 	my $num = 0;
 	my @agMonsters;
 
-	foreach my $monster (@{$monstersList->getItems()}) {
+	for my $monster (@$monstersList) {
 		my $control = Misc::mon_control($monster->name,$monster->{nameID}) if $type || !$wantArray;
 		my $ID = $monster->{ID};
 		next if (!timeOut($monster->{attack_failedLOS}, 6));
@@ -318,6 +334,65 @@ sub ai_getAggressives {
 				&& (($config{'attackCanSnipe'}) ? !Misc::checkLineSnipable($myPos, $pos) : (!Misc::checkLineWalkable($myPos, $pos) || !Misc::checkLineSnipable($myPos, $pos)))
 				&& !$monster->{dmgToYou} && !$monster->{missedYou}
 				&& ($party && (!$monster->{dmgToParty} && !$monster->{missedToParty} && !$monster->{dmgFromParty}))
+				);
+
+			# Continuing, check whether the forced Agro is really a clean monster;
+			next if (($type && $control->{attack_auto} == 2) && !Misc::checkMonsterCleanness($ID));
+
+			if ($wantArray) {
+				# Function is called in array context
+				push @agMonsters, $ID;
+
+			} else {
+				# Function is called in scalar context
+				if ($control->{weight} > 0) {
+					$num += $control->{weight};
+				} elsif ($control->{weight} != -1) {
+					$num++;
+				}
+			}
+		}
+	}
+
+	if ($wantArray) {
+		return @agMonsters;
+	} else {
+		return $num;
+	}
+}
+
+##
+# ai_slave_getAggressives(slave, [check_mon_control])
+# Returns: an array of monster IDs, or a number.
+#
+# Get a list of all aggressive monsters on screen for a given slave.
+# The definition of "aggressive" is: a monster who has hit or missed me.
+#
+# If $check_mon_control is set, then all monsters in mon_control.txt
+# with the 'attack_auto' flag set to 2, will be considered as aggressive.
+# See also the manual for more information about this.
+sub ai_slave_getAggressives {
+	my ($slave, $type) = @_;
+	my $wantArray = wantarray;
+	my $num = 0;
+	my @agMonsters;
+
+	for my $monster (@$monstersList) {
+		my $control = Misc::mon_control($monster->name,$monster->{nameID}) if $type || !$wantArray;
+		my $ID = $monster->{ID};
+		# Never attack monsters that we failed to get LOS with
+		next if (!timeOut($monster->{attack_failedLOS}, 6));
+
+		if ((($type && ($control->{attack_auto} == 2)) ||
+			(($monster->{dmgToPlayer}{$slave->{ID}} || $monster->{missedToPlayer}{$slave->{ID}} || $monster->{dmgFromPlayer}{$slave->{ID}} || $monster->{missedFromPlayer}{$slave->{ID}}) && Misc::checkMonsterCleanness($ID))) &&
+			timeOut($monster->{$slave->{ai_attack_failed_timeout}}, $timeout{ai_attack_unfail}{timeout}))
+		{
+			my $myPos = calcPosition($slave);
+			my $pos = calcPosition($monster);
+
+			next if (($type && $control->{attack_auto} == 2)
+				&& (($config{$slave->{configPrefix}.'attackCanSnipe'}) ? !Misc::checkLineSnipable($myPos, $pos) : (!Misc::checkLineWalkable($myPos, $pos) || !Misc::checkLineSnipable($myPos, $pos)))
+				&& !$monster->{dmgToPlayer}{$slave->{ID}} && !$monster->{missedToPlayer}{$slave->{ID}} && !$monster->{dmgFromPlayer}{$slave->{ID}} && !$monster->{missedFromPlayer}{$slave->{ID}}
 				);
 
 			# Continuing, check whether the forced Agro is really a clean monster;
@@ -483,9 +558,9 @@ sub ai_route { $char->route(@_) }
 
 #sellAuto for items_control - chobit andy 20030210
 sub ai_sellAutoCheck {
-	foreach my $item (@{$char->inventory->getItems()}) {
+	for my $item (@{$char->inventory}) {
 		next if ($item->{equipped} || $item->{unsellable});
-		my $control = Misc::items_control($item->{name});
+		my $control = Misc::items_control($item->{name}, $item->{nameID});
 		if ($control->{sell} && $item->{amount} > $control->{keep}) {
 			return 1;
 		}
@@ -555,19 +630,29 @@ sub ai_skillUse2 {
 # Returns 1 if it is time to perform storageAuto sequence.
 # Returns 0 otherwise.
 sub ai_storageAutoCheck {
-	return 0 if ($char->getSkillLevel(new Skill(handle => 'NV_BASIC')) < 6  && ($char->{jobID} == 0 || $char->{jobID} == 161)); # Check NV_BASIC skill only for Novice and High Novice
-	if ($config{minStorageZeny}) {
-		return 0 if ($char->{zeny} < $config{minStorageZeny});
-	}
-	foreach my $item (@{$char->inventory->getItems()}) {
+	return 0 unless ai_canOpenStorage();
+	
+	for my $item (@{$char->inventory}) {
 		next if ($item->{equipped});
-		my $control = Misc::items_control($item->{name});
+		my $control = Misc::items_control($item->{name}, $item->{nameID});
 		if ($control->{storage} && $item->{amount} > $control->{keep}) {
 			return 1;
 		}
 	}
 	# TODO: check getAuto
 	return 0;
+}
+
+sub ai_canOpenStorage {
+	# Check NV_BASIC and SU_BASIC_SKILL (Doram)
+	return 0 if ($char->getSkillLevel(new Skill(handle => 'NV_BASIC')) < 6 && $char->getSkillLevel(new Skill(handle => 'SU_BASIC_SKILL')) < 1);
+	
+	# Check if we have enough zeny to open storage (and if it matters)
+	# Also check for a Free Ticket for Kafra Storage (7059)
+	return 0 if (!$config{storageAuto_useChatCommand} && !$config{storageAuto_useItem} && $config{minStorageZeny} > 0 && 
+					$char->{zeny} < $config{minStorageZeny} && !$char->inventory->getByNameID(7059));
+	
+	return 1;
 }
 
 
@@ -630,7 +715,7 @@ sub cartAdd {
 # Talks to an NPC.
 sub ai_talkNPC {
 	require Task::TalkNPC;
-	AI::queue("NPC", new Task::TalkNPC(x => $_[0], y => $_[1], sequence => $_[2]));
+	AI::queue("NPC", new Task::TalkNPC(type => 'talknpc', x => $_[0], y => $_[1], sequence => $_[2]));
 }
 
 sub attack { $char->attack(@_) }

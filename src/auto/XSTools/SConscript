@@ -23,7 +23,7 @@ import copy
 #'''))
 
 if win32:
-	osl_libs = ['ws2_32']
+	osl_libs = ['moldname', 'kernel32', 'user32', 'gdi32', 'winspool', 'comdlg32', 'advapi32', 'shell32', 'ole32', 'oleaut32', 'netapi32', 'uuid', 'ws2_32', 'mpr', 'winmm', 'version', 'odbc32', 'odbccp32', 'comctl32']
 else:
 	osl_libs = ['pthread']
 	if platform == "sunos":
@@ -100,12 +100,14 @@ sources += [
 	'utils/rijndael-alg-fst.c',
 	'utils/rijndael-api-fst.c',
 	'utils/aes-cfb.c',
-	'utils/perl/Benchmark.cpp'
 ]
-XS_sources['utils/perl/Benchmark.xs'] = 'utils/perl/Benchmark.cpp'
 XS_sources['utils/perl/HttpReader.xs'] = 'utils/perl/HttpReader.cpp'
 XS_sources['utils/perl/Whirlpool.xs'] = 'utils/perl/Whirlpool.c'
 XS_sources['utils/perl/Rijndael.xs'] = 'utils/perl/Rijndael.xs.cpp'
+
+if not darwin:
+	sources += ['utils/perl/Benchmark.cpp']
+	XS_sources['utils/perl/Benchmark.xs'] = 'utils/perl/Benchmark.cpp'
 
 if not win32:
 	perlenv.ParseConfig('curl-config --cflags --libs')

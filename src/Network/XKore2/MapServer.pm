@@ -20,7 +20,7 @@ use Globals qw(
 	$portalsList $npcsList $monstersList $playersList $petsList
 	@friendsID %friends %pet @partyUsersID %spells
 	@chatRoomsID %chatRooms @venderListsID %venderLists $hotkeyList
-	%config $questList %cart $incomingMessages $masterServer $messageSender
+	%config $questList $incomingMessages $masterServer $messageSender
 	%cashShop
 );
 use Base::Ragnarok::MapServer;
@@ -111,9 +111,7 @@ sub onClientData {
 sub gameguard_reply {
 	my ($self, $args, $client) = @_;
 	if ($config{gameGuard} == 0) {
-		warning "Enviando reply do XKore2.\n";
-		warning "Se tiver DC's constantes apos esta mensagem poste no forum: \n";
-		error "http://forums.openkore-brasil.com.\n"
+		debug("Replying XKore 2's gameguard query");
 	} else {
 		# mangle, may be unsafe
 		$args->{mangle} = 2;
@@ -219,10 +217,10 @@ sub send_quest_info {
 		$mi = 0;
 		foreach my $mobID (keys %{$quest->{missions}}) {
 			my $mission = $quest->{missions}->{$mobID};
-			$tmp = pack('V v Z24', $mission->{mobID}, $mission->{count}, $mission->{mobName_org});
+			$tmp = pack('V v Z24', $mission->{mob_id}, $mission->{mob_count}, $mission->{mob_name_original});
 			$mi++;
 		}
-		$m_output .= pack('V3 v a90', $questID, $quest->{time_start}, $quest->{time}, $mi, $tmp);
+		$m_output .= pack('V3 v a90', $questID, $quest->{time_start}, $quest->{time_expire}, $mi, $tmp);
 		$k++;
 	}
 	if ($k > 0 && length($q_output) > 0) {
@@ -258,7 +256,7 @@ sub send_pet {
 sub send_party_list {
 	my ($self, $client, $char) = @_;
 	my $data = undef;
-	if ($char->{party}) {
+	if ($char->{party}{joined}) {
 		my $num = 0;
 		foreach my $ID (@partyUsersID) {
 			next if !defined($ID) || !$char->{party}{users}{$ID};
@@ -516,7 +514,7 @@ sub send_player_info {
 #					$data .= pack('C2 v a4 C', 0x96, 0x01, $statusID, $char->{ID}, 1);
 					if ($statusID == 673) {
 						# for Cart active
-						$data .= pack('C2 v a4 C V4', 0x3F, 0x04, $statusID, $char->{ID}, 1, 9999, $cart{type}, 0, 0);
+						$data .= pack('C2 v a4 C V4', 0x3F, 0x04, $statusID, $char->{ID}, 1, 9999, $char->cart->type, 0, 0);
 					} elsif ($statusID == 622) {
 						# sit
 						$data .= pack('C2 v a4 C V4', 0x3F, 0x04, $statusID, $char->{ID}, 1, 9999, 1, 0, 0);
@@ -597,16 +595,15 @@ sub send_inventory {
 	my $data = undef;
 	# Send cart information includeing the items
 	if (!$client->{session}{dummy} && $char->cartActive && $RunOnce) {
-		$data = pack('C2 v2 V2', 0x21, 0x01, $cart{items}, $cart{items_max}, ($cart{weight} * 10), ($cart{weight_max} * 10));
+		$data = pack('C2 v2 V2', 0x21, 0x01, $char->cart->items, $char->cart->items_max, ($char->cart->{weight} * 10), ($char->cart->{weight_max} * 10));
 		$client->send($data);
 		
 		my @stackable;
 		my @nonstackable;
 		my $n = 0;
-		for (my $i = 0; $i < @{$cart{'inventory'}}; $i++) {
-			next if (!$cart{'inventory'}[$i] || !%{$cart{'inventory'}[$i]});
-			my $item = $cart{'inventory'}[$i];
-			$item->{index} = $i;
+		my $i = 0;
+		foreach my $item (@{$char->cart->getItems()}) {
+			$item->{ID} = $i++;
 			if ($item->{type} <= 3 || $item->{type} == 6 || $item->{type} == 10 || $item->{type} == 16 || $item->{type} == 17 || $item->{type} == 19) {
 				push @stackable, $item;
 			} else {
@@ -618,8 +615,8 @@ sub send_inventory {
 		$data = undef;
 		$n = 0;
 		foreach my $item (@stackable) {
-			$data .= pack('v2 C2 v2 a8 l',
-				$item->{index},
+			$data .= pack('a2 v C2 v2 a8 l',
+				$item->{ID},
 				$item->{nameID},
 				$item->{type},
 				$item->{identified},  # identified
@@ -637,8 +634,8 @@ sub send_inventory {
 		$data = undef;
 		$n = 0;
 		foreach my $item (@nonstackable) {
-			$data .= pack('v2 C2 v2 C2 a8 l v2',
-				$item->{index},
+			$data .= pack('a2 v C2 v2 C2 a8 l v2',
+				$item->{ID},
 				$item->{nameID},
 				$item->{type},
 				$item->{identified},  # identified
@@ -672,8 +669,8 @@ sub send_inventory {
 		# Send stackable item information
 		$data = undef;
 		foreach my $item (@stackable) {
-			$data .= pack('v2 C2 v1 x2',
-				$item->{index},
+			$data .= pack('a2 v C2 v1 x2',
+				$item->{ID},
 				$item->{nameID},
 				$item->{type},
 				1,  # identified
@@ -686,8 +683,8 @@ sub send_inventory {
 		# Send non-stackable item (mostly equipment) information
 		$data = undef;
 		foreach my $item (@nonstackable) {
-			$data .= pack('v2 C2 v2 C2 a8',
-				$item->{index}, $item->{nameID}, $item->{type},
+			$data .= pack('a2 v C2 v2 C2 a8',
+				$item->{ID}, $item->{nameID}, $item->{type},
 				$item->{identified}, $item->{type_equip}, $item->{equipped}, $item->{broken},
 				$item->{upgrade}, $item->{cards});
 		}
@@ -764,6 +761,8 @@ sub map_login {
 				switch => 'account_id',
 				accountID => $args->{accountID},
 			}));
+		} elsif ($masterServer->{serverType} eq 'iRO_Classic') {
+			$client->send($args->{accountID});
 		} else {
 			# BUGGY $client->send($args->{accountID});
 		}

@@ -13,7 +13,6 @@ package Network::Send::kRO::RagexeRE_2013_05_15a;
 
 use strict;
 use base qw(Network::Send::kRO::RagexeRE_2013_03_20);
-use Log qw(debug);
 
 sub new {
 	my ($class) = @_;
@@ -41,11 +40,11 @@ sub new {
 		'0933' => undef,
 		'08A1' => ['item_take', 'a4', [qw(ID)]],#6
 #		'0438' => undef,
-		'0944' => ['item_drop', 'v2', [qw(index amount)]],#6
+		'0944' => ['item_drop', 'a2 v', [qw(ID amount)]],#6
 #		'08AC' => undef,
-		'0887' => ['storage_item_add', 'v V', [qw(index amount)]],#8
+		'0887' => ['storage_item_add', 'a2 V', [qw(ID amount)]],#8
 		'0874' => undef,
-		'08AC' => ['storage_item_remove', 'v V', [qw(index amount)]],#8
+		'08AC' => ['storage_item_remove', 'a2 V', [qw(ID amount)]],#8
 		'0959' => undef,
 		'0438' => ['skill_use_location', 'v4', [qw(lv skillID x y)]],#10
 		'0898' => undef,
@@ -54,7 +53,12 @@ sub new {
 		'0368' => ['actor_name_request', 'a4', [qw(ID)]],#6
 		'0938' => undef,
 		'0815' => ['buy_bulk_openShop', 'a4 c a*', [qw(limitZeny result itemInfo)]],#-1
+		'0819' => ['search_store_info', 'v C V2 C2 a*', [qw(len type max_price min_price item_count card_count item_card_list)]],
+		'0835' => ['search_store_request_next_page'],
+		'0838' => ['search_store_select', 'a4 a4 v', [qw(accountID storeID nameID)]],
+		'0366' => ['skill_use_location_text', 'v5 Z80', [qw(lvl ID x y info)]],
 	);
+	
 	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
 	
 	my %handlers = qw(
@@ -75,16 +79,15 @@ sub new {
 		storage_item_add 0887
 		storage_item_remove 08AC
 		sync 035F
+		search_store_info 0819
+		search_store_request_next_page 0835
+		search_store_select 0838
+		skill_use_location_text 0366
 	);
+	
 	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
 
-	$self;
-}
-
-sub sendSkillUseLocInfo {
-	my ($self, $ID, $lv, $x, $y, $moreinfo) = @_;
-	$self->sendToServer(pack('v5 Z80', 0x0366, $lv, $ID, $x, $y, $moreinfo));
-	debug "Skill Use on Location: $ID, ($x, $y)\n", "sendPacket", 2;
+	return $self;
 }
 
 1;

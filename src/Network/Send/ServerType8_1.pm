@@ -18,16 +18,31 @@
 package Network::Send::ServerType8_1;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType8;
 use base qw(Network::Send::ServerType8);
-use Log qw(message warning error debug);
+
+use Globals qw($char $masterServer $syncSync);
+use Log qw(debug);
 use I18N qw(stringToBytes);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
-	return $class->SUPER::new(@_);
+	my $self = $class->SUPER::new(@_);
+
+	my %packets = (
+		'0193' => ['storage_close'],
+	);
+
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		storage_close 0193
+	);
+	
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
+	return $self;
 }
 
 sub sendAttack {
@@ -190,7 +205,7 @@ sub sendStorageAdd {
 	my $index = shift;
 	my $amount = shift;
 	
-	my $msg = pack("C*", 0x94, 0x00) . pack("x1") . pack("v*", $index) . pack("x10") . pack("V*", $amount);
+	my $msg = pack("C*", 0x94, 0x00) . pack("x1") . pack("a2", $index) . pack("x10") . pack("V*", $amount);
 	
 	$self->sendToServer($msg);
 	debug "Sent Storage Add: $index x $amount\n", "sendPacket", 2;
@@ -199,16 +214,9 @@ sub sendStorageAdd {
 sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
 
-	my $msg = pack("C*", 0xf7, 0x00) . pack("x1") . pack("v*", $index) . pack("x8") . pack("V*", $amount);
+	my $msg = pack("C*", 0xf7, 0x00) . pack("x1") . pack("a2", $index) . pack("x8") . pack("V*", $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Get: $index x $amount\n", "sendPacket", 2;
-}
-
-sub sendStorageClose {
-	my ($self) = @_;
-	my $msg = pack("C*", 0x93, 0x01);
-	$self->sendToServer($msg);
-	debug "Sent Storage Done\n", "sendPacket", 2;
 }
 
 sub sendSync {

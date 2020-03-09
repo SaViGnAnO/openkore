@@ -38,6 +38,7 @@ sub new {
 			{key => 'aspd', title => T('Aspd'), type => 'substat'},
 			{key => 'statPoint', title => T('Status point'), type => 'substat'},
 			{key => 'skillPoint', title => T('Skill point'), type => 'substat'},
+			{key => 'zeny', title => T('Zenys'), type => 'substat'},
 		],
 	);
 	
@@ -79,10 +80,11 @@ sub update {
 	$self->set ('statPoint', $char->{points_free});
 	$self->set ('skillPoint', $char->{points_skill});
 	$self->set ('speed', sprintf '%.2f', 1 / $char->{walk_speed}) if $char->{walk_speed};
+	$self->set ('zeny', $char->{zeny});
 	
 	$self->setStatus ($char->statusesString);
 	
-	$self->setImage ('bitmaps/heads/' . $char->{sex} . '/' . $char->{hair_style} . '.gif', {x => 1, y => $char->{hair_color}, w => 8, h => 9});
+	$self->setImage ('bitmaps/heads/' . $char->{sex} . '/' . $char->{hair_style} . '.gif', {x => 1, y => $char->hairColor(), w => 8, h => 9});
 	
 	$self->GetSizer->Layout;
 	

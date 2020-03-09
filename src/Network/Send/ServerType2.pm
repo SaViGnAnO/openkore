@@ -13,12 +13,12 @@
 package Network::Send::ServerType2;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType0;
 use base qw(Network::Send::ServerType0);
-use Log qw(message warning error debug);
-use I18N qw(stringToBytes);
-use Utils qw(getTickCount getHex getCoordString);
+
+use Globals qw($char $syncSync);
+use Log qw(debug);
+use Utils qw(getTickCount getHex);
 
 sub new {
 	my ($class) = @_;
@@ -145,7 +145,7 @@ sub sendStorageAdd {
 	my $msg;
 
 	$msg = pack("C*", 0xF3, 0x00) . pack("C*", 0x12, 0x00, 0x40, 0x73) .
-		pack("v", $index) .
+		pack("a2", $index) .
 		pack("C", 0xFF) .
 		pack("V", $amount);	
 		

@@ -26,12 +26,13 @@ use Modules 'register';
 # Do not use any other Kore modules here. It will create circular dependancies.
 
 our %EXPORT_TAGS = (
-	config  => [qw(%arrowcraft_items %avoid @chatResponses %cities_lut %config %consoleColors %directions_lut %equipTypes_lut %equipSlot_rlut %equipSlot_lut %haircolors @headgears_lut @msgTable %items_control %items_lut %itemSlotCount_lut %itemsDesc_lut %itemTypes_lut %jobs_lut %maps_lut %masterServers %monsters_lut %npcs_lut %packetDescriptions %portals_lut %responses %sex_lut %shop %skillsDesc_lut %lookHandle %skillsArea %skillsEncore %spells_lut %emotions_lut %timeout $char %mon_control %priority %routeWeights %pickupitems %rpackets %itemSlots_lut %statusHandle %statusName %effectName %portals_los %stateHandle %ailmentHandle %mapTypeHandle %mapPropertyTypeHandle %mapPropertyInfoHandle %elements_lut %mapAlias_lut %quests_lut)],
-	ai      => [qw(@ai_seq @ai_seq_args %ai_v $AI $AI_forcedOff %targetTimeout)],
-	state   => [qw($accountID $cardMergeIndex @cardMergeItemsID $charID @chars @chars_old %cart @friendsID %friends %incomingFriend $field %homunculus $itemsList @itemsID %items $monstersList @monstersID %monsters @npcsID %npcs $npcsList @playersID %players @portalsID @portalsID_old %portals %portals_old $portalsList @storeList $currentChatRoom @currentChatRoomUsers @chatRoomsID %createdChatRoom %chatRooms @skillsID %storage @storageID $storageTitle @arrowCraftID %guild %incomingGuild @spellsID %spells @unknownPlayers @unknownNPCs $useArrowCraft %currentDeal %incomingDeal %outgoingDeal @identifyID @partyUsersID %incomingParty @petsID %pets @venderItemList $venderID $venderCID @venderListsID @buyerItemList @selfBuyerItemList $buyerID $buyingStoreID @buyerListsID @articles $articles %venderLists %buyerLists %monsters_old @monstersID_old %npcs_old %items_old %players_old @playersID_old @servers $sessionID $sessionID2 $accountSex $accountSex2 $map_ip $map_port $KoreStartTime $secureLoginKey $initSync $lastConfChangeTime $petsList $playersList $portalsList @playerNameCacheIDs %playerNameCache %pet $pvp @cashList $slavesList @slavesID %slaves %cashShop)],
+
+	config  => [qw(%arrowcraft_items %avoid @chatResponses %cities_lut %config %consoleColors %directions_lut %equipTypes_lut %equipSlot_rlut %equipSlot_lut %haircolors @headgears_lut @msgTable %items_control %items_lut %itemSlotCount_lut %itemsDesc_lut %itemTypes_lut %itemOptionHandle %itemOption_lut %jobs_lut %maps_lut %masterServers %monsters_lut %npcs_lut %packetDescriptions %portals_lut @portals_lut_missed %responses %sex_lut %shop %banking %buyer_shop %skillsDesc_lut %lookHandle %skillsArea %skillsEncore %spells_lut %emotions_lut %timeout $char %mon_control %priority %routeWeights %pickupitems %rpackets %itemSlots_lut %statusHandle %statusName %effectName %hatEffectHandle %hatEffectName %portals_los %stateHandle %ailmentHandle %mapTypeHandle %mapPropertyTypeHandle %mapPropertyInfoHandle %elements_lut %mapAlias_lut %quests_lut $Blacksmith_Blessing %itemStackLimit %title_lut %attendance_rewards)],
+	ai      => [qw(@ai_seq @ai_seq_args %ai_v %targetTimeout)],
+	state   => [qw($accountID $cardMergeIndex @cardMergeItemsID $charID @chars @chars_old @friendsID %friends %incomingFriend $field %homunculus $itemsList @itemsID %items $monstersList @monstersID %monsters @npcsID %npcs $npcsList @playersID %players @portalsID @portalsID_old %portals %portals_old $portalsList $storeList $currentChatRoom @currentChatRoomUsers @chatRoomsID %createdChatRoom %chatRooms @skillsID $storageTitle @arrowCraftID %guild %incomingGuild @spellsID %spells @unknownPlayers @unknownNPCs $useArrowCraft %currentDeal %incomingDeal %outgoingDeal @identifyID @partyUsersID %incomingParty @petsID %pets $venderItemList $venderID $venderCID @venderListsID @buyerItemList @selfBuyerItemList $buyerID $buyingStoreID @buyerListsID @articles $articles %venderLists %buyerLists %monsters_old @monstersID_old %npcs_old %items_old %players_old @playersID_old @servers $sessionID $sessionID2 $accountSex $accountSex2 $map_ip $map_port $KoreStartTime $secureLoginKey $initSync $lastConfChangeTime $petsList $playersList $portalsList %elementals $elementalsList @elementalsID @playerNameCacheIDs %playerNameCache %pet $pvp $cashList $slavesList @slavesID %slaves %cashShop $skillExchangeItem $refineUI %clan %universalCatalog $mergeItemList)],
 	network => [qw($remote_socket $net $messageSender $charServer $conState $conState_tries $encryptVal $ipc $bus $masterServer $lastSwitch $packetParser $clientPacketHandler $bytesSent $incomingMessages $outgoingClientMessages $enc_val1 $enc_val2 $captcha_state)],
 	interface => [qw($interface)],
-	misc    => [qw($quit $reconnectCount @lastpm %lastpm @privMsgUsers %timeout_ex $shopstarted $dmgpsec $totalelasped $elasped $totaldmg %overallAuth %responseVars %talk $startTime_EXP $startingzeny @monsters_Killed $bExpSwitch $jExpSwitch $totalBaseExp $totalJobExp $shopEarned %itemChange $XKore_dontRedirect $monkilltime $monstarttime $startedattack $firstLoginMap $sentWelcomeMessage $versionSearch $monsterBaseExp $monsterJobExp %descriptions %flags %damageTaken $logAppend @sellList $userSeed $taskManager $repairList $mailList $auctionList $questList $hotkeyList $devotionList $cookingList %charSvrSet @deadTime)],
+ 	misc    => [qw($quit $reconnectCount @lastpm %lastpm @privMsgUsers %timeout_ex $shopstarted $buyershopstarted $bankingopened $dmgpsec $totalelasped $elasped $totaldmg %overallAuth %responseVars %talk $startTime_EXP $startingzeny @monsters_Killed $bExpSwitch $jExpSwitch $totalBaseExp $totalJobExp $shopEarned %itemChange $XKore_dontRedirect $monkilltime $monstarttime $startedattack $firstLoginMap $sentWelcomeMessage $versionSearch $monsterBaseExp $monsterJobExp %flags %damageTaken $logAppend @sellList $userSeed $taskManager $repairList $mailList $rodexList $rodexWrite $auctionList $questList $achievementList $hotkeyList $devotionList $cookingList $currentCookingType $makableList %charSvrSet @deadTime $refineList $current_item_list $ignored_all %roulette)],
 	syncs => [qw($syncSync $syncMapSync)],
 	cmdqueue => [qw($cmdQueue @cmdQueueList $cmdQueueStartTime $cmdQueueTime @cmdQueuePriority)],
 );
@@ -99,6 +100,11 @@ our %itemSlotCount_lut;
 our %itemsDesc_lut;
 our %itemTypes_lut;
 our %itemSlots_lut;
+our %itemOption_lut;
+our %itemOptionHandle;
+our %title_lut;
+our %attendance_rewards;
+our %roulette;
 our %mapAlias_lut;
 our %maps_lut;
 our %masterServers;
@@ -108,12 +114,14 @@ our %npcs_lut;
 our %packetDescriptions;
 our %portals_los;
 our %portals_lut;
+our @portals_lut_missed;
 our %priority;
 our %responses;
 our %routeWeights;
 our %rpackets;
 our %sex_lut;
 our %shop;
+our %banking;
 our %skillsDesc_lut;
 our %skillsArea;
 our %skillsEncore;
@@ -125,9 +133,13 @@ our (
 	%statusName,
 	# effect names
 	%effectName,
+	# Hat Effect
+	%hatEffectHandle,
+	%hatEffectName,
 );
 our %spells_lut;
 our %timeout;
+our %itemStackLimit;
 our %jobs_lut = (
 	0 => 'Novice',
 	1 => 'Swordsman',
@@ -181,18 +193,18 @@ our %jobs_lut = (
 	181 => 'Gypsy',
 
 	# Elementals
-	2114 => 'Agni',
-	2115 => 'Agni',
-	2116 => 'Agni',
-	2117 => 'Aqua',
-	2118 => 'Aqua',
-	2119 => 'Aqua',
-	2120 => 'Ventus',
-	2121 => 'Ventus',
-	2122 => 'Ventus',
-	2123 => 'Tera',
-	2124 => 'Tera',
-	2125 => 'Tera',
+	2114 => 'Agni [S]',
+	2115 => 'Agni [M]',
+	2116 => 'Agni [L]',
+	2117 => 'Aqua [S]',
+	2118 => 'Aqua [M]',
+	2119 => 'Aqua [L]',
+	2120 => 'Ventus [S]',
+	2121 => 'Ventus [M]',
+	2122 => 'Ventus [L]',
+	2123 => 'Tera [S]',
+	2124 => 'Tera [M]',
+	2125 => 'Tera [L]',
 
 	4001 => 'High Novice',
 	4002 => 'High Swordsman',
@@ -310,7 +322,16 @@ our %jobs_lut = (
 	4191 => 'Super Baby',           # expanded
 	4211 => 'Kagerou',
 	4212 => 'Oboro',
-
+	4215 => 'Rebellion',
+	4218 => 'Summoner',
+	
+	4239 => 'Star Emperor',
+	4240 => 'Soul Reaper',
+	4241 => 'Baby Star Emperor',
+	4242 => 'Baby Soul Reaper',
+	#4243 => 'Star Emperor',#Job_Star_Emperor2:      4243
+	#4244 => 'Soul Reaper', #Job_Baby_Star_Emperor2: 4244
+	
 	# Homunculus
 	6001 => 'Lif',
 	6002 => 'Amistr',
@@ -377,8 +398,6 @@ our @ai_seq;
 our @ai_seq_args;
 our %ai_v;
 our %targetTimeout;
-our $AI = 2;
-our $AI_forcedOff;
 
 # Game state
 our $accountID;
@@ -386,7 +405,6 @@ our $cardMergeIndex;
 our @cardMergeItemsID;
 our @chars;
 our @chars_old;
-our %cart;
 our $field;
 our @friendsID;
 our %friends;
@@ -406,18 +424,17 @@ our @portalsID;
 our @portalsID_old;
 our %portals;
 our %portals_old;
-our @storeList;
+our $storeList;
 our $currentChatRoom;
 our @currentChatRoomUsers;
 our @chatRoomsID;
 our %createdChatRoom;
 our %chatRooms;
 our @skillsID;
-our %storage;
-our @storageID;
 our $storageTitle;
 our @arrowCraftID;
 our %guild;
+our %clan;
 our %incomingGuild;
 our @spellsID;
 our %spells;
@@ -431,6 +448,9 @@ our @identifyID;
 our $playersList;
 our $npcsList;
 our $petsList;
+our %elementals;
+our $elementalsList;
+our @elementalsID;
 our $portalsList;
 our $slavesList;
 our @slavesID;
@@ -439,7 +459,7 @@ our %cashShop;
 our @petsID;
 our %pets;
 our $pvp;
-our @venderItemList;
+our $venderItemList;
 our $venderID;
 our $venderCID;
 our @venderListsID;
@@ -468,7 +488,11 @@ our $lastConfChangeTime;
 our @playerNameCacheIDs;
 our %playerNameCache;
 our %pet;
-our @cashList;
+our $cashList;
+our $skillExchangeItem;
+our $refineUI;
+our %universalCatalog;
+our $mergeItemList;
 
 # Network
 our $remote_socket;	# Unused, but required for outdated plugins
@@ -501,6 +525,7 @@ our @privMsgUsers;
 our %timeout_ex;
 our %overallAuth;
 our $shopstarted;
+our $bankingopened;
 our $dmgpsec;
 our $totalelasped;
 our $elasped;
@@ -532,6 +557,11 @@ our $logAppend;
 our @sellList;
 our $userSeed;
 our $taskManager;
+our $refineList;
+our $currentCookingType;
+our $current_item_list;
+our $ignored_all;
+
 
 our $bytesSent = 0;
 #our $bytesReceived = 0; # replaced by $packetParser->{bytesProcessed}
@@ -549,13 +579,17 @@ our @cmdQueuePriority = ('ai','aiv','al','debug','chist','dl','exp','friend','g'
 
 our $repairList;
 our $mailList;
+our $rodexList;
+our $rodexWrite;
 our $auctionList;
 our $hotkeyList;
 our $devotionList;
 our $cookingList;
+our $makableList;
 our %charSvrSet;
 our $questList;
-
+our $achievementList;
+our $Blacksmith_Blessing = 6635;
 our $captcha_state = 0;
 
 our %quests_lut;

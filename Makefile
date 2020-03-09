@@ -11,10 +11,10 @@
 # http://wiki.openkore.com/index.php/How_to_run_OpenKore
 
 all:
-	@python src/scons-local-2.0.1/scons.py || echo -e "\e[1;31mCompilation failed. Please read http://wiki.openkore.com/index.php/How_to_run_OpenKore for help.\e[0m"
+	@python src/scons-local-3.0.1/scons.py || echo -e "\e[1;31mCompilation failed. Please read http://wiki.openkore.com/index.php/How_to_run_OpenKore for help.\e[0m"
 
 clean:
-	python src/scons-local-2.0.1/scons.py -c
+	python src/scons-local-3.0.1/scons.py -c
 
 dist:
 	bash makedist.sh
@@ -23,7 +23,7 @@ bindist:
 	bash makedist.sh --bin
 
 test:
-	perl openkore.pl --control=../control --tables=../tables --fields=../fields $$ARGS
+	cd src/test && ./unittests.pl
 
 doc:
 	cd src/doc && ./createdoc.pl

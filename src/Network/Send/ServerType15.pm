@@ -19,17 +19,32 @@
 package Network::Send::ServerType15;
 
 use strict;
-use Globals qw($char $syncSync $net %config $masterServer);
 use Network::Send::ServerType11;
 use Network::PaddedPackets;
 use base qw(Network::Send::ServerType11);
-use Log qw(error debug);
+
+use Globals qw($char $syncSync $masterServer);
+use Log qw(debug);
 use I18N qw(stringToBytes);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
-	return $class->SUPER::new(@_);
+	my $self = $class->SUPER::new(@_);
+
+	my %packets = (
+		'008C' => ['storage_close'],
+	);
+
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		storage_close 008C
+	);
+	
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
+	return $self;
 }
 
 sub sendAction {
@@ -141,23 +156,16 @@ sub sendStorageAdd {
 	my $self= shift;
 	my $index = shift;
 	my $amount = shift;
-	my $msg = pack("C2 v1 x5 V1", 0x85, 0x00, $index, $amount);
+	my $msg = pack("C2 a2 x5 V1", 0x85, 0x00, $index, $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Add: $index x $amount\n", "sendPacket", 2;
 }
 
 sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
-	my $msg = pack("C2 V1 x6 v1", 0xF7, 0x00, $amount, $index);
+	my $msg = pack("C2 V1 x6 a2", 0xF7, 0x00, $amount, $index);
 	$self->sendToServer($msg);
 	debug "Sent Storage Get: $index x $amount\n", "sendPacket", 2;
-}
-
-sub sendStorageClose {
-	my ($self) = @_;
-	my $msg = pack("C*", 0x8C, 0x00);
-	$self->sendToServer($msg);
-	debug "Sent Storage Done\n", "sendPacket", 2;
 }
 
 sub sendSync {

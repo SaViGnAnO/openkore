@@ -16,11 +16,11 @@
 package Network::Send::ServerType10;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType0;
 use base qw(Network::Send::ServerType0);
-use Log qw(message warning error debug);
-use I18N qw(stringToBytes);
+
+use Globals qw($char);
+use Log qw(debug);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
@@ -153,14 +153,14 @@ sub sendSkillUseLoc {
 
 sub sendStorageAdd {
 	my ($self, $index, $amount) = @_;
-	my $msg = pack("C*", 0x7E, 0x00) . pack("v", $index) . pack("C*", 0x00) . pack("V", $amount);
+	my $msg = pack("C*", 0x7E, 0x00) . pack("a2", $index) . pack("C*", 0x00) . pack("V", $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Add: $index x $amount\n", "sendPacket", 2;
 }
 
 sub sendStorageGet {
 	my ($self, $index, $amount) = @_;
-	my $msg = pack("C*", 0xF7, 0x00) . pack("v", $index) . pack("x12") . pack("V*", $amount);
+	my $msg = pack("C*", 0xF7, 0x00) . pack("a2", $index) . pack("x12") . pack("V*", $amount);
 	$self->sendToServer($msg);
 	debug "Sent Storage Get: $index x $amount\n", "sendPacket", 2;
 }

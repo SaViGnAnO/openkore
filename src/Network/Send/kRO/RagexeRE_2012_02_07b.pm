@@ -14,10 +14,6 @@ package Network::Send::kRO::RagexeRE_2012_02_07b;
 use strict;
 use base qw(Network::Send::kRO::RagexeRE_2011_12_20b);
 
-use Log qw(debug);
-use Utils qw(getHex);
-use I18N qw(stringToBytes);
-
 sub version { 29 }
 
 sub new {
@@ -30,7 +26,7 @@ sub new {
 		'022D' => ['map_login', 'a4 a4 a4 V C', [qw(accountID charID sessionID tick sex)]],#19
 		'023B' => ['friend_request', 'a*', [qw(username)]],#26
 		'0361' => ['homunculus_command', 'v C', [qw(commandType, commandID)]],#5
-		'0362' => ['item_drop', 'v2', [qw(index amount)]],#6
+		'0362' => ['item_drop', 'a2 v', [qw(ID amount)]],#6
 		'0891' => undef,
 		'0892' => undef,
 		'08A4' => undef,

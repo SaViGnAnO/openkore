@@ -13,19 +13,20 @@
 ##
 # MODULE DESCRIPTION: Inventory model
 #
-# <b>Derived from: @CLASS(ObjectList)</b>
+# <b>Derived from: @CLASS(ActorList)</b>
 #
-# The InventoryList class models a character's inventory or a Kapra storage.
+# The InventoryList class models a character's inventory, Kapra storage or cart's inventory.
 #
-# <h3>Differences compared to ObjectList</h3>
-# All items in Inventory are of the same class, and are all a
-# subclass of @CLASS(Actor::Item).
+# <h3>Differences compared to ActorList</h3>
+# All items are @CLASS(Actor::Item).
 package InventoryList;
 
 use strict;
 use Carp::Assert;
+use Utils::Assert;
 use Utils::ObjectList;
-use base qw(ObjectList);
+use ActorList;
+use base qw(ActorList);
 
 ### CATEGORY: Class InventoryList
 
@@ -35,8 +36,8 @@ use base qw(ObjectList);
 #
 # Creates a new InventoryList object.
 sub new {
-	my ($class) = @_;
-	my $self = $class->SUPER::new();
+	my ($class, %args) = @_;
+	my $self = $class->SUPER::new('Actor::Item');
 
 	# Hash<String, Array<int>> nameIndex
 	# Maps an item name to a list of item indices. Used for fast
@@ -56,7 +57,7 @@ sub new {
 	#         for all $i in the array $v:
 	#             defined($i)
 	#             defined(get($i))
-	#             get($i)->{invIndex} == $i
+	#             get($i)->{binID} == $i
 	#             $i is unique in the entire nameIndex.
 	$self->{nameIndex} = {};
 
@@ -71,11 +72,16 @@ sub new {
 	#     scalar(keys nameChangeEvents) == size()
 	$self->{nameChangeEvents} = {};
 
+	if ( $args{items} ) {
+		$self->add( $_ ) foreach @{ $args{items} };
+	}
+
 	return $self;
 }
 
 sub DESTROY {
 	my ($self) = @_;
+	Plugins::delHook($self->{hooks}) if $self->{hooks};
 	$self->clear();
 	$self->SUPER::DESTROY();
 }
@@ -86,9 +92,9 @@ sub DESTROY {
 #     defined($item)
 #     defined($item->{name})
 #     $self->find($item) == -1
-# Ensures: $item->{invIndex} == result
+# Ensures: $item->{binID} == result
 #
-# Adds an item to this InventoryList. $item->{invIndex} will automatically be set
+# Adds an item to this InventoryList. $item->{binID} will automatically be set
 # index in which that item is stored in this list.
 #
 # This method overloads $ObjectList->add(), and has a stronger precondition.
@@ -96,20 +102,20 @@ sub DESTROY {
 # method.
 sub add {
 	my ($self, $item) = @_;
-	assert(defined $item) if DEBUG;
-	assert($item->isa('Actor::Item')) if DEBUG;
-	assert(defined $item->{name}) if DEBUG;
-	assert($self->find($item) == -1) if DEBUG;
+	assert(defined $item, "Item must be defined when adding to InventoryList") if DEBUG;
+	assert($item->isa('Actor::Item'), "Item must be of Actor::Item class") if DEBUG;
+	assert(defined $item->{name}, "Item must have a name when adding to InventoryList") if DEBUG;
+	assert($self->find($item) == -1, "Item must be unique in InvetoryList") if DEBUG;
 
-	my $invIndex = $self->SUPER::add($item);
-	$item->{invIndex} = $invIndex;
+	my $binID = $self->SUPER::add($item);
+	$item->{binID} = $binID;
 
 	my $indexSlot = $self->getNameIndexSlot($item->{name});
-	push @{$indexSlot}, $invIndex;
+	push @{$indexSlot}, $binID;
 
 	my $eventID = $item->onNameChange->add($self, \&onNameChange);
-	$self->{nameChangeEvents}{$invIndex} = $eventID;
-	return $invIndex;
+	$self->{nameChangeEvents}{$binID} = $eventID;
+	return $binID;
 }
 
 if (DEBUG) {
@@ -119,7 +125,7 @@ if (DEBUG) {
 			my ($self, $index) = @_;
 			my $item = $self->SUPER::get($index);
 			if ($item) {
-				assert(defined $item->{invIndex}, "invIndex must be defined");
+				assert(defined $item->{binID}, "binID must be defined");
 			}
 			return $item;
 		}
@@ -139,7 +145,7 @@ if (DEBUG) {
 # See also: $Actor->{ID}
 sub getByName {
 	my ($self, $name) = @_;
-	assert(defined $name) if DEBUG;
+	assert(defined $name, "This method requires a defined item name") if DEBUG;
 	my $indexSlot = $self->{nameIndex}{lc($name)};
 	if ($indexSlot) {
 		return $self->get($indexSlot->[0]);
@@ -149,14 +155,14 @@ sub getByName {
 }
 
 ##
-# Actor::Item $InventoryList->getByServerIndex(int serverIndex)
+# Actor::Item $InventoryList->getByNameID(Bytes nameID)
 #
-# Return the first Actor::Item object, whose 'index' field is equal to $serverIndex.
+# Return the first Actor::Item object, whose 'nameID' field is equal to $nameID.
 # If nothing is found, undef is returned.
-sub getByServerIndex {
-	my ($self, $serverIndex) = @_;
-	foreach my $item (@{$self->getItems()}) {
-		if ($item->{index} == $serverIndex) {
+sub getByNameID {
+	my ($self, $nameID) = @_;
+	for my $item (@$self) {
+		if ($item->{nameID} eq $nameID) {
 			return $item;
 		}
 	}
@@ -164,18 +170,20 @@ sub getByServerIndex {
 }
 
 ##
-# Actor::Item $InventoryList->getByNameID(Bytes nameID)
+# Actor::Item $InventoryList->sumByNameID(nameID)
 #
-# Return the first Actor::Item object, whose 'nameID' field is equal to $nameID.
-# If nothing is found, undef is returned.
-sub getByNameID {
-	my ($self, $nameID) = @_;
-	foreach my $item (@{$self->getItems()}) {
-		if ($item->{nameID} eq $nameID) {
-			return $item;
+# Returns the amount of items with a given nameID.
+# If nothing is found, 0 is returned.
+sub sumByNameID {
+	my ($self, $id) = @_;
+	my $sum = 0;
+	for my $item (@$self) {
+		if ($item->{nameID} == $id) {
+			$sum = $sum + $item->{amount};
 		}
 	}
-	return undef;
+
+	return $sum;
 }
 
 ##
@@ -188,7 +196,7 @@ sub getByNameID {
 # being checked.
 sub getByCondition {
 	my ($self, $condition) = @_;
-	foreach my $item (@{$self->getItems()}) {
+	for my $item (@$self) {
 		if ($condition->($item)) {
 			return $item;
 		}
@@ -208,7 +216,7 @@ sub getByCondition {
 # first.
 sub getByNameList {
 	my ($self, $lists) = @_;
-	assert(defined $lists) if DEBUG;
+	assert(defined $lists, "This method requires a defined list of item name") if DEBUG;
 	my @items = split / *, */, lc($lists);
 	foreach my $name (@items) {
 		next if (!$name);
@@ -225,6 +233,33 @@ sub getByNameList {
 }
 
 ##
+# Actor::Item $InventoryList->getMultiple(String searchPattern)
+# searchPattern: a search pattern.
+# Returns: an array of Actor::Item objects.
+#
+# Select one or more items by name and/or index.
+# $searchPattern has the following syntax:
+# <pre>index1,index2,...,indexN,name1,name2,...nameN</pre>
+# You can also use '-' to indicate a range (only for indexes), like:
+# <pre>1-5,7,9</pre>
+sub getMultiple {
+	my ( $self, $lists ) = @_;
+	assert(defined $lists, "This method requires a defined search pattern") if DEBUG;
+	my @indexes = split / *,+ */, lc( $lists );
+	my @items;
+	foreach my $index ( @indexes ) {
+		if ( $index =~ /^(\d+)-(\d+)$/o ) {
+			push @items, $self->get( $_ ) foreach $1 .. $2;
+		} elsif ( $index =~ /^(\d+)$/o ) {
+			push @items, $self->get( $index );
+		} else {
+			push @items, $self->getByName( $index );
+		}
+	}
+	grep {$_} @items;
+}
+
+##
 # boolean $InventoryList->remove(Actor::Item item)
 # Requires: defined($item) && defined($item->{name})
 #
@@ -235,25 +270,27 @@ sub getByNameList {
 # method.
 sub remove {
 	my ($self, $item) = @_;
-	assert(defined $item) if DEBUG;
-	assert(UNIVERSAL::isa($item, 'Actor::Item')) if DEBUG;
-	assert(defined $item->{name}) if DEBUG;
+	assert(defined $item, "This method requires a defined item as argument") if DEBUG;
+	assertClass($item, 'Actor::Item') if DEBUG;
+	assert(defined $item->{name}, "Item must have a defined name") if DEBUG;
 
 	my $result = $self->SUPER::remove($item);
 	if ($result) {
 		my $indexSlot = $self->getNameIndexSlot($item->{name});
-		for (my $i = 0; $i < @{$indexSlot}; $i++) {
-			if ($indexSlot->[$i] == $item->{invIndex}) {
-				splice(@{$indexSlot}, $i, 1);
-				last;
+
+		if (@{$indexSlot} == 1) {
+			delete $self->{nameIndex}{lc($item->{name})};
+		} else {
+			for (my $i = 0; $i < @{$indexSlot}; $i++) {
+				if ($indexSlot->[$i] == $item->{binID}) {
+					splice(@{$indexSlot}, $i, 1);
+					last;
+				}
 			}
 		}
-		if (@{$indexSlot} == 0) {
-			delete $self->{nameIndex}{lc($item->{name})};
-		}
 
-		my $eventID = $self->{nameChangeEvents}{$item->{invIndex}};
-		delete $self->{nameChangeEvents}{$item->{invIndex}};
+		my $eventID = $self->{nameChangeEvents}{$item->{binID}};
+		delete $self->{nameChangeEvents}{$item->{binID}};
 		$item->onNameChange->remove($eventID);
 	}
 	return $result;
@@ -283,10 +320,10 @@ sub removeByName {
 # overloaded
 sub doClear {
 	my ($self) = @_;
-	foreach my $item (@{$self->getItems()}) {
-		assert(defined $item->{invIndex}, "invIndex must be defined") if DEBUG;
-		my $eventID = $self->{nameChangeEvents}{$item->{invIndex}};
-		delete $self->{nameChangeEvents}{$item->{invIndex}};
+	for my $item (@$self) {
+		assert(defined $item->{binID}, "binID must be defined") if DEBUG;
+		my $eventID = $self->{nameChangeEvents}{$item->{binID}};
+		delete $self->{nameChangeEvents}{$item->{binID}};
 		$item->onNameChange->remove($eventID);
 	}
 	$self->SUPER::doClear();
@@ -299,30 +336,30 @@ sub checkValidity {
 	my ($self) = @_;
 	$self->SUPER::checkValidity();
 
-	assert(defined $self->{nameIndex});
-	assert(scalar(keys %{$self->{nameIndex}}) <= $self->size());
+	assert(defined $self->{nameIndex}, "Name-Index hash is undefined");
+	assert(scalar(keys %{$self->{nameIndex}}) <= $self->size(), "InventoryList has invalid size");
 	foreach my $k (keys %{$self->{nameIndex}}) {
 		should(lc($self->getByName($k)->{name}), $k);
 		should(lc $k, $k);
 	}
 	
 	my $sum = 0;
-	my %invIndexCount;
+	my %binIDCount;
 	foreach my $v (values %{$self->{nameIndex}}) {
-		assert(defined $v);
-		assert(@{$v} > 0);
+		assert(defined $v, "Name-Index hash has undefined ID list");
+		assert(@{$v} > 0, "Name-Index hash has empty ID list");
 		foreach my $i (@{$v}) {
-			assert(defined $i);
-			assert(defined $self->get($i));
-			assert($self->get($i)->{invIndex} == $i);
-			$invIndexCount{$i}++;
-			should($invIndexCount{$i}, 1);
+			assert(defined $i, "ID list in Name-Index hash has undefined ID as element");
+			assert(defined $self->get($i), "Failed to find an ID that is in this InventoryList");
+			assert($self->get($i)->{binID} == $i, "InventoryList has invalid binID in one of its elements");
+			$binIDCount{$i}++;
+			should($binIDCount{$i}, 1);
 		}
 		$sum += @{$v};
 	}
 	should($sum, $self->size());
 
-	assert(defined $self->{nameChangeEvents});
+	assert(defined $self->{nameChangeEvents}, "Name-change event hash is undefined");
 	should(scalar(keys %{$self->{nameChangeEvents}}), $self->size());
 }
 
@@ -337,7 +374,7 @@ sub onNameChange {
 
 	my $indexSlot = $self->getNameIndexSlot($args->{oldName});
 	for (my $i = 0; $i < @{$indexSlot}; $i++) {
-		if ($indexSlot->[$i] == $item->{invIndex}) {
+		if ($indexSlot->[$i] == $item->{binID}) {
 			# Delete from old index slot.
 			splice(@{$indexSlot}, $i, 1);
 			if (@{$indexSlot} == 0) {
@@ -346,7 +383,7 @@ sub onNameChange {
 
 			# Add to new index slot.
 			$indexSlot = $self->getNameIndexSlot($item->{name});
-			push @{$indexSlot}, $item->{invIndex};
+			push @{$indexSlot}, $item->{binID};
 			return;
 		}
 	}
@@ -356,15 +393,26 @@ sub onNameChange {
 # total amount of the same name items
 sub sumByName {
 	my ($self, $name) = @_;
-	assert(defined $name) if DEBUG;
+	assert(defined $name, "This method requires a defined item name") if DEBUG;
 	my $sum = 0;
-	foreach my $item (@{$self->getItems()}) {
-		if ($item->{name} eq $name) {
+	for my $item (@$self) {
+		if (lc($item->{name}) eq lc($name)) {
 			$sum = $sum + $item->{amount};
 		}
 	}
 
 	return $sum;
+}
+
+# isReady is true if this InventoryList has actionable data. Eg, storage is open, or we have a cart, etc.
+sub isReady {
+    1;
+}
+
+sub item_max_stack {
+	my ($self, $nameID) = @_;
+	
+	return 30000;
 }
 
 1;

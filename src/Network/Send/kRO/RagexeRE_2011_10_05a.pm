@@ -14,8 +14,6 @@ package Network::Send::kRO::RagexeRE_2011_10_05a;
 use strict;
 use base qw(Network::Send::kRO::RagexeRE_2011_08_16a);
 
-use Log qw(debug);
-
 sub version { 27 }
 
 sub new {
@@ -25,29 +23,31 @@ sub new {
 	my %packets = (
 		'0202' => undef,
 		'022D' => undef,
-		'023B' => ['item_drop', 'v2', [qw(index amount)]],#6
+		'023B' => ['item_drop', 'a2 v', [qw(ID amount)]],#6
 		'02C4' => ['skill_use', 'v2 a4', [qw(lv skillID targetID)]],#10 
 		'0360' => undef,
 		'035F' => ['buy_bulk_request', 'a4', [qw(ID)]],#6
 		'0361' => undef,
 		'0362' => undef,
 		'0364' => undef,
+		'0366' => ['skill_use_location_text', 'v5 Z80', [qw(lvl ID x y info)]],
 		'0367' => ['sync', 'V', [qw(time)]],#6
 		'0369' => undef,
 		'0436' => ['map_login', 'a4 a4 a4 V C', [qw(accountID charID sessionID tick sex)]],#19 
 		'07E4' => undef,
 		'07EC' => ['actor_action', 'a4 C', [qw(targetID type)]],#7
-		'0802' => ['storage_item_remove', 'v V', [qw(index amount)]],#8
+		'0802' => ['storage_item_remove', 'a2 V', [qw(ID amount)]],#8
 		'08A7' => ['item_take', 'a4', [qw(ID)]],#6
 		'0815' => ['actor_look_at', 'v C', [qw(head body)]],#5
 		'0835' => ['friend_request', 'a*', [qw(username)]],#26
 		'083C' => ['party_join_request_by_name', 'Z24', [qw(partyName)]],#26
 		'0885' => ['homunculus_command', 'v C', [qw(commandType, commandID)]],#5
 		'0887' => ['actor_info_request', 'a4', [qw(ID)]],#6
-		'08A4' => ['storage_item_add', 'v V', [qw(index amount)]],#8
+		'08A4' => ['storage_item_add', 'a2 V', [qw(ID amount)]],#8
 		'08AD' => undef,
 		'0365' => ['buy_bulk_openShop', 'a4 c a*', [qw(limitZeny result itemInfo)]],#-1
-		);
+	);
+	
 	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
 	
 	my %handlers = qw(
@@ -66,17 +66,12 @@ sub new {
 		storage_item_add 08A4
 		storage_item_remove 0802
 		sync 0367
+		skill_use_location_text 0366
 	);
+	
 	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
 	
-	$self;
-}
-
-# 0x0366,90,useskilltoposinfo,2:4:6:8:10
-sub sendSkillUseLocInfo {
-	my ($self, $ID, $lv, $x, $y, $moreinfo) = @_;
-	$self->sendToServer(pack('v5 Z80', 0x0366, $lv, $ID, $x, $y, $moreinfo));
-	debug "Skill Use on Location: $ID, ($x, $y)\n", "sendPacket", 2;
+	return $self;
 }
 
 1;

@@ -21,6 +21,7 @@ use strict;
 use Time::HiRes qw(time);
 use Scalar::Util;
 use Carp::Assert;
+use Utils::Assert;
 
 use Modules 'register';
 use Task::WithSubtask;
@@ -55,6 +56,7 @@ use enum qw(
 # Create a new Task::Route object. The following options are allowed:
 # `l
 # - All options allowed by Task::WithSubtask->new(), except 'mutexes', 'autostop' and 'autofail'.
+# - actor (required) - Which Actor this task should move.
 # - x (required) - The X-coordinate that you want to move to.
 # - y (required) - The Y-coordinate that you want to move to.
 # - maxDistance - The maximum distance (in blocks) that the route may be. If
@@ -358,6 +360,12 @@ sub iterate {
 	}
 }
 
+sub resetRoute {
+	my ($self) = @_;
+	$self->{solution} = [];
+	$self->{stage} = '';
+}
+
 ##
 # boolean Task::Route->getRoute(Array* solution, Field field, Hash* start, Hash* dest, [boolean avoidWalls = true])
 # $solution: The route solution will be stored in here.
@@ -377,7 +385,7 @@ sub iterate {
 # in Utils/PathFinding.pm
 sub getRoute {
 	my ($class, $solution, $field, $start, $dest, $avoidWalls) = @_;
-	assert(UNIVERSAL::isa($field, 'Field')) if DEBUG;
+	assertClass($field, 'Field') if DEBUG;
 	if (!defined $dest->{x} || $dest->{y} eq '') {
 		@{$solution} = () if ($solution);
 		return 1;

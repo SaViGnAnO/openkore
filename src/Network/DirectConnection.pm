@@ -239,9 +239,14 @@ sub serverDisconnect {
 		message TF("Disconnecting (%s:%s)...", $self->{remote_socket}->peerhost(), 
 			$self->{remote_socket}->peerport()), "connection";
 		close($self->{remote_socket});
-		!$self->serverAlive() ?
-			message T("disconnected\n"), "connection" :
+		
+		if ($self->serverAlive()) {
 			error T("couldn't disconnect\n"), "connection";
+			Plugins::callHook("serverDisconnect/fail");
+		} else {
+			message T("disconnected\n"), "connection";
+			Plugins::callHook("serverDisconnect/success");
+		}
 	}
 }
 
@@ -498,6 +503,7 @@ sub checkConnection {
 			if ($master->{charServer_ip}) {
 				$self->serverConnect($master->{charServer_ip}, $master->{charServer_port});
 			} elsif ($servers[$config{'server'}]) {
+				message TF("Selected server: %s\n", $servers[$config{server}]->{name}), 'connection';
 				$self->serverConnect($servers[$config{'server'}]{'ip'}, $servers[$config{'server'}]{'port'});
 			} else {
 				error TF("Invalid server specified, server %s does not exist...\n", $config{server}), "connection";
@@ -575,6 +581,7 @@ sub checkConnection {
 	} elsif ($self->getState() == Network::CONNECTED_TO_CHAR_SERVER) {
 		if(!$self->serverAlive() && !$conState_tries) {
 			if ($config{pauseMapServer}) {
+				return if($config{XKore} eq 1 || $config{XKore} eq 3);
 				message "Pausing for $config{pauseMapServer} second(s)...\n", "system";
 				sleep($config{pauseMapServer});
 			}

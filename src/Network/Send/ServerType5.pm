@@ -13,16 +13,30 @@
 package Network::Send::ServerType5;
 
 use strict;
-use Globals qw($accountID $sessionID $sessionID2 $accountSex $char $charID %config %guild @chars $masterServer $syncSync $net);
 use Network::Send::ServerType0;
 use base qw(Network::Send::ServerType0);
-use Log qw(message warning error debug);
-use I18N qw(stringToBytes);
+
+use Globals qw($char $masterServer $syncSync);
+use Log qw(debug);
 use Utils qw(getTickCount getHex getCoordString);
 
 sub new {
 	my ($class) = @_;
-	return $class->SUPER::new(@_);
+	my $self = $class->SUPER::new(@_);
+
+	my %packets = (
+		'0193' => ['storage_close'],
+	);
+
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		storage_close 0193
+	);
+	
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
+	return $self;
 }
 
 sub sendGetCharacterName {
@@ -219,7 +233,7 @@ sub sendStorageAdd {
 	
 	$msg = pack("C*", 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00) .
 		pack("C*", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00) .
-		pack("v*", $index) .
+		pack("a2", $index) .
 		pack("C*", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7b, 0x01, 0x00) .
 		pack("V*", $amount);
 	
@@ -233,7 +247,7 @@ sub sendStorageGet {
 
 	$msg = pack("C*", 0xf7, 0x00, 0x00, 0x00) .
 		pack("C*", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00) .
-		pack("v*", $index) .
+		pack("a2", $index) .
 		pack("C*", 0x00) .
 		pack("V*", $amount);
 	

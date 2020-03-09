@@ -28,6 +28,8 @@ use Data::Dumper;
 use Compress::Zlib;
 use base qw(Exporter);
 use utf8;
+use Math::Trig;
+use Math::Trig qw/pi pi2 pip2 pip4/;
 
 use Globals;
 use Log qw(message warning error debug);
@@ -76,23 +78,27 @@ our @EXPORT = (
 	closestWalkableSpot
 	objectInsideSpell
 	objectIsMovingTowards
-	objectIsMovingTowardsPlayer/,
+	objectIsMovingTowardsPlayer
+	get_kite_position/,
 
 	# Inventory management
 	qw/inInventory
 	inventoryItemRemoved
 	storageGet
+	transferItems
 	cardName
 	itemName
 	itemNameSimple
 	itemNameToID
-	buyingstoreitemdelete/,
+	itemNameToIDList
+	containsItemNameToIDList/,
 
 	# File Parsing and Writing
 	qw/chatLog
 	shopLog
 	monsterLog
-	deadLog/,
+	deadLog
+	searchStoreInfo/,
 
 	# Logging
 	qw/itemLog/,
@@ -128,7 +134,6 @@ our @EXPORT = (
 	getResponse
 	getSpellName
 	headgearName
-	initUserSeed
 	itemLog_clear
 	look
 	lookAtPosition
@@ -195,13 +200,27 @@ our @EXPORT = (
 	checkSelfCondition
 	checkPlayerCondition
 	checkMonsterCondition
-	findCartItemInit
-	findCartItem
 	makeShop
 	openShop
 	closeShop
+	makeBuyerShop
+	openBuyerShop
+	closeBuyerShop
 	inLockMap
-	parseReload/
+	parseReload
+	setCharDeleteDate
+	toBase62
+	fromBase62
+	solveItemLink
+	solveMessage/,
+	
+	# Npc buy and sell
+	qw/cancelNpcBuySell
+	completeNpcSell
+	completeNpcBuy/,
+	
+	# Char login
+	qw/CharacterLogin/,
 	);
 
 
@@ -322,6 +341,7 @@ sub configModify {
 		}
 	}
 	$config{$key} = $val;
+	Settings::update_log_filenames() if $key =~ /^(username|char|server)$/o;
 	saveConfigFile();
 }
 
@@ -367,8 +387,52 @@ sub saveConfigFile {
 sub setTimeout {
 	my $timeout = shift;
 	my $time = shift;
-	message TF("Timeout '%s' set to %s (was %s)\n", $timeout, $time, $timeout{$timeout}{timeout}), "info";
-	$timeout{$timeout}{'timeout'} = $time;
+	my %args;
+
+	if (@_ == 1) {
+		$args{silent} = $_[0];
+	} else {
+		%args = @_;
+	}
+	
+	$args{autoCreate} = 1 if (!exists $args{autoCreate});
+	
+	Plugins::callHook('setTimeout', {
+		timeout => $timeout,
+		time => $time,
+		additionalOptions => \%args
+	});
+	
+	if (!$args{silent}) {
+		my $oldtime = $timeout{$timeout}{timeout};
+		if (!defined $oldtime) {
+			$oldtime = "not set";
+		}
+		
+		if ($timeout{$timeout}{timeout} eq $time) {
+			if ($time) {
+				message TF("Timeout '%s' is already %s\n", $timeout, $time), "info";
+			} else {
+				message TF("Timeout '%s' is already *None*\n", $timeout), "info";
+			}
+			return;
+		}
+		
+		if (!defined $time) {
+			message TF("Timeout '%s' unset (was %s)\n", $timeout, $oldtime), "info";
+		} else {
+			message TF("Timeout '%s' set to %s (was %s)\n", $timeout, $time, $oldtime), "info";
+		}
+	}
+	if ($args{autoCreate} && !exists $timeout{$timeout}{timeout}) {
+		my $f;
+		if (open($f, ">>", Settings::getControlFilename("timeouts.txt"))) {
+			print $f "$timeout\n";
+			close($f);
+		}
+	}
+	
+	$timeout{$timeout}{timeout} = $time;
 	writeDataFileIntact2(Settings::getControlFilename("timeouts.txt"), \%timeout);
 }
 
@@ -740,7 +804,7 @@ sub objectInsideSpell {
 	my ($x, $y) = ($object->{pos_to}{x}, $object->{pos_to}{y});
 	foreach (@spellsID) {
 		my $spell = $spells{$_};
-		if ((!$ignore_party_members || !$char->{party} || !$char->{party}{users}{$spell->{sourceID}})
+		if ((!$ignore_party_members || !$char->{party}{joined} || !$char->{party}{users}{$spell->{sourceID}})
 		  && $spell->{sourceID} ne $accountID
 		  && $spell->{pos}{x} == $x && $spell->{pos}{y} == $y) {
 			return 1;
@@ -781,11 +845,10 @@ sub objectIsMovingTowardsPlayer {
 		my %vec;
 		getVector(\%vec, $obj->{pos_to}, $obj->{pos});
 
-		my $players = $playersList->getItems();
-		foreach my $player (@{$players}) {
+		for my $player (@$playersList) {
 			my $ID = $player->{ID};
 			next if (
-			     ($ignore_party_members && $char->{party} && $char->{party}{users}{$ID})
+			     ($ignore_party_members && $char->{party}{joined} && $char->{party}{users}{$ID})
 			  || (defined($player->{name}) && existsInList($config{tankersList}, $player->{name}))
 			  || $player->statusActive('EFFECTSTATE_SPECIALHIDING'));
 			if (checkMovementDirection($obj->{pos}, \%vec, $player->{pos}, 15)) {
@@ -794,6 +857,177 @@ sub objectIsMovingTowardsPlayer {
 		}
 	}
 	return 0;
+}
+
+use constant AVOID_WALLS => 4;
+use constant AVOID_MASTER_BOUND => 2;
+
+##
+# get_kite_position(field, actor, target, min_dist_from_target, move_distance_min, move_distance_max, master, max_dist_to_master)
+# field: Field object of the map 'actor' should kite on.
+# actor: reference to the actor which is kiting.
+# target: reference to the actor which you are kiting.
+# min_dist_from_target: the minimum distance 'actor' should keep from 'target'.
+# move_distance: the minimum distance which 'actor' should try to move away from 'target'.
+# move_distance: the maximum distance which 'actor' should try to move away from 'target'.
+# master: reference to the actor which is the master of 'actor', if 'actor' is a slave (homunculus or mercenary).
+# max_dist_to_master: the maximum distance 'actor' should move away from 'master'.
+#
+# Returns: reference to a hash containing both x and y coordinates of the best kite position found on success, and undef on failure
+#
+# Kite algorithm used in runFromTarget
+sub get_kite_position {
+	my ($field, $actor, $target, $min_dist_from_target, $move_distance_min, $move_distance_max, $master, $max_dist_to_master) = @_;
+
+	my ($actor_pos, $enemy_pos, $master_pos);
+	my $pathfinding = new PathFinding;
+
+	# Calculate the current position of actor, target and master
+	$actor_pos = calcPosition($actor);
+	$enemy_pos = calcPosition($target);
+	if ($master) {
+		$master_pos = calcPosition($master);
+	}
+
+	# Get the angle (using a vector) in radians from target to actor
+	my $initial_rad = atan2(($actor_pos->{y} - $enemy_pos->{y}), ($actor_pos->{x} - $enemy_pos->{x}));
+	
+	# atan2 returns radians between -pi and pi, adust it to between 0 and 2*pi
+	if ($initial_rad < 0) {
+		$initial_rad += pi2;
+	}
+
+	my @best_not_distant_cells;
+	my @best_distant_cells;
+
+	# If there are any valid cells at least AVOID_WALLS blocks away from a wall ignore all blocks closer than AVOID_WALLS
+	my $skip_near_wall_cells = 0;
+	
+	# If there are any valid cells at least AVOID_MASTER_BOUND blocks away from the master follow max distance ignore all blocks closer to the max distance than AVOID_MASTER_BOUND
+	my $skip_near_master_bound = 0;
+	
+	# If there are any valid cells that qualify both criteria, ignore all blocks that are closer to a wall than AVOID_WALLS and closer to the max distance than AVOID_MASTER_BOUND
+	my $skip_both = 0;
+
+	foreach my $move_distance ($move_distance_min..$move_distance_max) {
+		my $current_rad = $initial_rad;
+
+		# Biggest possible angle between 2 adjacent cells in dist $move_distance
+		my $angle_a = atan2(($move_distance-1), $move_distance);
+		my $angle_b = atan2(($move_distance-1), ($move_distance+1));
+		my $added_rad_per_loop = pip4 - max($angle_a, $angle_b);
+
+		my $current_mod = 1;
+		my $total_added_rad = 0;
+		
+		# We count the total amount of radians checked on each side, adding pi to each side means doing half a turn clockwise and counterclockwise, so we check the whole perimeter
+		my $max_rad = pi;
+		
+		my %last_pos_by_mod = (
+			'1'  => { x => undef, y => undef },
+			'-1' => { x => undef, y => undef },
+		);
+
+		while ($total_added_rad < $max_rad) {
+			my $cos_cur = cos($current_rad);
+			my $sin_cur = sin($current_rad);
+
+			my %current_cell;
+			$current_cell{x} = $enemy_pos->{x} + int($move_distance * $cos_cur);
+			$current_cell{y} = $enemy_pos->{y} + int($move_distance * $sin_cur);
+
+			# Skip if the last iteration resulted in the same cell as this one
+			next if (defined $last_pos_by_mod{$current_mod}{x} && $current_cell{x} == $last_pos_by_mod{$current_mod}{x} && $current_cell{y} == $last_pos_by_mod{$current_mod}{y});
+
+			$last_pos_by_mod{$current_mod}{x} = $current_cell{x};
+			$last_pos_by_mod{$current_mod}{y} = $current_cell{y};
+
+			# Skip if the cell is not walkable or if it is too close to target
+			next if (!$field->isWalkable($current_cell{x}, $current_cell{y}));
+			next if (blockDistance(\%current_cell, $enemy_pos) < $min_dist_from_target);
+
+			$current_cell{wall_dist} = ord(substr($field->{dstMap}, $current_cell{y} * $field->width + $current_cell{x}));
+			if ($current_cell{wall_dist} >= AVOID_WALLS) {
+				$skip_near_wall_cells = 1;
+			}
+			if ($master) {
+				$current_cell{master_bound_dist} = $max_dist_to_master - blockDistance($master_pos, \%current_cell);
+				next if ($current_cell{master_bound_dist} < 0);
+				
+				if ($current_cell{master_bound_dist} >= AVOID_MASTER_BOUND) {
+					$skip_near_master_bound = 1;
+					
+					if ($current_cell{wall_dist} >= AVOID_WALLS) {
+						$skip_both = 1;
+					}
+				}
+			}
+
+			# Get rid of ridiculously large route distances (such as spots that are on a hill)
+			$pathfinding->reset(
+				field => $field,
+				start => $actor_pos,
+				dest => \%current_cell);
+			$current_cell{path_dist} = $pathfinding->runcount;
+			next if ($current_cell{path_dist} <= 0 || $current_cell{path_dist} > $move_distance_max * 2);
+
+			$current_cell{dist_dif} = distance(\%current_cell, $actor_pos) - distance(\%current_cell, $enemy_pos);
+			# If this is a valid cell but it is closer to target than to actor we could run into target while pathing to it
+			# So add it to a lower priority list
+			if ($current_cell{dist_dif} > 0) {
+				push(@best_not_distant_cells, \%current_cell);
+
+			# Otherwise add it to the normal priority list
+			} else {
+				push(@best_distant_cells, \%current_cell);
+			}
+
+		} continue {
+			# We start at $initial_rad and move $added_rad_per_loop radians both clockwise and counterclockwise each loop checking for cells
+			if ($current_mod == 1 && $total_added_rad > 0) {
+				$current_mod = -1;
+			} else {
+				$current_mod = 1;
+				$total_added_rad += $added_rad_per_loop;
+			}
+
+			$current_rad = $initial_rad + ($total_added_rad * $current_mod);
+
+			# Again, adjust $current_rad to be between 0 and 2*pi
+			if ($current_rad >= pi2) {
+				$current_rad -= pi2;
+			} elsif ($current_rad < 0) {
+				$current_rad += pi2;
+			}
+		}
+	}
+
+	# If you can't avoid both walls and master follow max distance at the same time, choose one or the other
+	# Here we choose to avoid walls
+	if (!$skip_both && $skip_near_wall_cells && $skip_near_master_bound) {
+		$skip_near_master_bound = 0;
+	}
+
+	# Sort all the cells that were closer to target than to actor by distance difference
+	@best_not_distant_cells = sort { $a->{distance_dif} <=> $b->{distance_dif} } @best_not_distant_cells;
+
+	# And than add the lower priority list (now sorted) at the end of the normal priority list
+	my @cells = (@best_distant_cells, @best_not_distant_cells);
+
+	# Loop all valid cells that were found in priority order
+	foreach my $cell (@cells) {
+		if ($skip_both) {
+			next if ($cell->{wall_dist} < AVOID_WALLS || $cell->{master_bound_dist} < AVOID_MASTER_BOUND);
+		} elsif ($skip_near_wall_cells) {
+			next if ($cell->{wall_dist} < AVOID_WALLS);
+		} elsif ($skip_near_master_bound) {
+			next if ($cell->{master_bound_dist} < AVOID_MASTER_BOUND);
+		}
+		return { x => $cell->{x}, y => $cell->{y} };
+	}
+
+	# Return undef if no valid cell was found
+	return undef;
 }
 
 
@@ -954,7 +1188,9 @@ sub actorAddedRemovedVars {
 		return ('npc', \@npcsID, \%npcs);
 	} elsif ($actor->isa ('Actor::Slave')) {
 		return ('slave', \@slavesID, \%slaves);
-	} else {
+	} elsif ($actor->isa ('Actor::Elemental')) {
+		return ('elemental', \@elementalsID, \%elementals);
+	}else {
 		return (undef, undef, undef);
 	}
 }
@@ -968,7 +1204,7 @@ sub actorAdded {
 	my ($type, $list, $hash) = actorAddedRemovedVars ($actor);
 
 	if (defined $type) {
-		debug TF("actorAdded: %s %s (%s), size %s\n", $type, (unpack 'V', $actor->{ID}), $actor->{binID}, $source->size), 'actorlist', 3;
+		debug TF("Actor added: %s %s (%s), size %s\n", $type, (unpack 'V', $actor->{ID}), $actor->{binID}, $source->size), 'actorlist', 3;
 		
 		if (DEBUG && scalar(keys %{$hash}) + 1 != $source->size()) {
 			use Data::Dumper;
@@ -987,14 +1223,14 @@ sub actorAdded {
 				"ObjectList:\n" .
 				$ol;
 		}
-		assert(binSize($list) + 1 == $source->size()) if DEBUG;
+		should(binSize($list) + 1, $source->size()) if DEBUG;
 
 		binAdd($list, $actor->{ID});
 		$hash->{$actor->{ID}} = $actor;
 		objectAdded($type, $actor->{ID}, $actor);
 
-		assert(scalar(keys %{$hash}) == $source->size()) if DEBUG;
-		assert(binSize($list) == $source->size()) if DEBUG;
+		should(scalar(keys %{$hash}), $source->size()) if DEBUG;
+		should(binSize($list), $source->size()) if DEBUG;
 	} else {
 		warning "Unknown actor type in actorAdded\n", 'actorlist' if DEBUG;
 	}
@@ -1007,7 +1243,7 @@ sub actorRemoved {
 	my ($type, $list, $hash) = actorAddedRemovedVars ($actor);
 
 	if (defined $type) {
-		debug TF("actorRemoved: %s %s (%s), size %s\n", $type, (unpack 'V', $actor->{ID}), $actor->{binID}, $source->size), 'actorlist', 3;
+		debug TF("Actor removed: %s %s (%s), size %s\n", $type, (unpack 'V', $actor->{ID}), $actor->{binID}, $source->size), 'actorlist', 3;
 		
 		if (DEBUG && scalar(keys %{$hash}) - 1 != $source->size()) {
 			use Data::Dumper;
@@ -1026,7 +1262,7 @@ sub actorRemoved {
 				"ObjectList:\n" .
 				$ol;
 		}
-		assert(binSize($list) - 1 == $source->size()) if DEBUG;
+		should(binSize($list) - 1, $source->size()) if DEBUG;
 
 		binRemove($list, $actor->{ID});
 		delete $hash->{$actor->{ID}};
@@ -1042,8 +1278,8 @@ sub actorRemoved {
 			delete $buyerLists{$actor->{ID}};
 		}
 
-		assert(scalar(keys %{$hash}) == $source->size()) if DEBUG;
-		assert(binSize($list) == $source->size()) if DEBUG;
+		should(scalar(keys %{$hash}), $source->size()) if DEBUG;
+		should(binSize($list), $source->size()) if DEBUG;
 	} else {
 		warning "Unknown actor type in actorRemoved\n", 'actorlist' if DEBUG;
 	}
@@ -1057,6 +1293,7 @@ sub actorListClearing {
 	undef %npcs;
 	undef %pets;
 	undef %slaves;
+	undef %elementals;
 	undef @itemsID;
 	undef @playersID;
 	undef @monstersID;
@@ -1064,6 +1301,7 @@ sub actorListClearing {
 	undef @npcsID;
 	undef @petsID;
 	undef @slavesID;
+	undef @elementalsID;
 }
 
 sub avoidGM_talk {
@@ -1094,8 +1332,10 @@ sub avoidGM_talk {
 sub avoidList_talk {
 	return 0 if ($net->clientAlive() || !$config{avoidList});
 	my ($user, $msg, $ID) = @_;
+	my $avoidPlayer = $avoid{Players}{lc($user)};
+	my $avoidID = $avoid{ID}{$ID};
 
-	if ($avoid{Players}{lc($user)}{disconnect_on_chat} || $avoid{ID}{$ID}{disconnect_on_chat}) {
+	if ($avoidPlayer->{disconnect_on_chat} || $avoidID->{disconnect_on_chat}) {
 		warning TF("Disconnecting to avoid %s!\n", $user);
 		main::chatLog("k", TF("*** %s talked to you, auto disconnected ***\n", $user));
 		warning TF("Disconnect for %s seconds...\n", $config{avoidList_reconnect});
@@ -1171,25 +1411,42 @@ sub charSelectScreen {
 
 		my $messageDeleteDate;
 		if ($chars[$num]{deleteDate}) {
-			$messageDeleteDate = TF("\n     -> It will be deleted lefting %s!", $chars[$num]{deleteDate});
+			if (int(time) > $chars[$num]{deleteDateTimestamp}) {
+				$messageDeleteDate = TF("\n     -> Deleting is possible since %s.", $chars[$num]{deleteDate});
+			} else {
+				$messageDeleteDate = TF("\n     -> It will be deleted lefting %s!", $chars[$num]{deleteDate});
+			}
 		}
 		
-		push @charNames, TF("Slot %d: %s (%s, level %d/%d)%s",
+		my $messageMapName;
+		
+		if (exists $chars[$num]{last_map} && $chars[$num]{last_map}) {
+			my $map_lut_key = $chars[$num]{last_map} . ".rsw";
+			
+			if (exists $maps_lut{$map_lut_key} && length $maps_lut{$map_lut_key} <= 16) {
+				$messageMapName = sprintf(", %s", $maps_lut{$map_lut_key});
+			} else {
+				$messageMapName = sprintf(", %s", $chars[$num]{last_map});
+			}
+		}
+		
+		push @charNames, TF("Slot %d: %s (%s, %s, level %d/%d%s)%s",
 			$num,
 			$chars[$num]{name},
 			$jobs_lut{$chars[$num]{'jobID'}},
+			$sex_lut{$chars[$num]{sex}},
 			$chars[$num]{lv},
 			$chars[$num]{lv_job},
+			$messageMapName,
 			$messageDeleteDate);
 		push @charNameIndices, $num;
 	}
 
 	if (@charNames) {
-		message(TF("------------- Character List -------------\n" .
-		           "%s\n" .
-		           "------------------------------------------\n",
-		           join("\n", @charNames)),
-		           "connection");
+		my $msg =  center(T(" Character List "), 79, '-') ."\n";
+		$msg .= join("\n", @charNames) ."\n";
+		$msg .= ('-'x79) . "\n";
+		message $msg, "connection";
 	}
 	return 1 if ($net->clientAlive && $net->version);
 
@@ -1198,9 +1455,16 @@ sub charSelectScreen {
 	return $plugin_args{return} if ($plugin_args{return});
 
 	if ($plugin_args{autoLogin} && @chars && $config{char} ne "" && $chars[$config{char}]) {
-		$messageSender->sendCharLogin($config{char});
-		$timeout{charlogin}{time} = time;
-		return 1;
+		if ($chars[$config{char}]{deleteDate}) {
+			error TF("Cannot select character \"%s\" that requested for deletion.\n", $chars[$config{char}]{name});
+			configModify("char",'');
+			relog(10);
+			return 0;
+		} else {
+			$messageSender->sendCharLogin($config{char});
+			$timeout{charlogin}{time} = time;
+			return 1;
+		}
 	}
 
 	my @choices = @charNames;
@@ -1229,11 +1493,16 @@ sub charSelectScreen {
 		return 0;
 
 	} elsif ($choice < @charNames) {
-		# Character chosen
-		configModify('char', $charNameIndices[$choice], 1);
-		$messageSender->sendCharLogin($config{char});
-		$timeout{charlogin}{time} = time;
-		return 1;
+		if ($chars[$charNameIndices[$choice]]{deleteDate}) {
+			error TF("Cannot select character \"%s\" that requested for deletion.\n", $chars[$charNameIndices[$choice]]{name});
+			goto TOP;
+		} else {
+			# Character chosen
+			configModify('char', $charNameIndices[$choice], 1);
+			$messageSender->sendCharLogin($config{char});
+			$timeout{charlogin}{time} = time;
+			return 1;
+		}
 
 	} elsif ($choice == @charNames) {
 		# 'Create character' chosen
@@ -1247,7 +1516,13 @@ sub charSelectScreen {
 	if ($mode eq "create") {
 		while (1) {
 			my $message;
-			if ($messageSender->{char_create_version}) {
+			if ( $messageSender->{char_create_version} == 0x0A39 ) {
+				$message
+					= T( "Please enter the desired properties for your characters, in this form:\n" )
+					. T( "(slot) \"(name)\" [ (hairstyle) [(haircolor)] ] [(job)] [(sex)]\n" )
+					. T( "Job should be one of 'novice' or 'summoner' (default is 'novice').\n" )
+					. T( "Sex should be one of 'M' or 'F' (default is 'F').\n" );
+			} elsif ($messageSender->{char_create_version}) {
 				$message = T("Please enter the desired properties for your characters, in this form:\n" .
 					"(slot) \"(name)\" [ (hairstyle) [(haircolor)] ]");
 			} else {
@@ -1282,12 +1557,45 @@ sub charSelectScreen {
 		my $charIndex = @charNameIndices[$choice];
 
 		if ($charDeleteVersion) {
-		$messageSender->{char_delete_slot} = $charIndex;
+			$messageSender->{char_delete_slot} = $charIndex;
 
 			if ($chars[$charIndex]{deleteDate}) {
-				$messageSender->sendCharDelete2Cancel($chars[$charIndex]{charID});
+				my $confirm = $interface->showMenu(
+					TF("Are you ABSOLUTELY SURE you want to delete:\n%s", $charNames[$choice]),
+					[T("Back"), T("No, don't delete"), T("Yes, delete")],
+					title => T("Confirm delete"));
+
+				if ($confirm == 0) {
+					goto TOP;
+				} elsif ($confirm == 1) { # Request cancel
+					$chars[$charIndex]{deleteDate} = undef;
+					$chars[$charIndex]{deleteDateTimestamp} = undef;
+					message TF("Canceling delete request for character %s...\n", $chars[$charIndex]{name}), "connection";
+					$messageSender->sendCharDelete2Cancel($chars[$charIndex]{charID});
+				} elsif ($confirm == 2 && int(time) > $chars[$charIndex]{deleteDateTimestamp}) {
+					my $code = $interface->query(T("Enter your birthdate, deletion code or e-mail."));
+					if (!defined($code)) {
+						goto TOP;
+					}
+
+					my $confirmation = $interface->showMenu(
+						TF("Are you ABSOLUTELY SURE you want to delete:\n%s", $charNames[$choice]),
+						[T("No, don't delete"), T("Yes, delete")],
+						title => T("Confirm delete"));
+					if ($confirmation != 1) {
+						goto TOP;
+					}
+
+					$messageSender->sendCharDelete2Accept($chars[$charIndex]{charID}, $code);
+					message TF("Deleting character %s...\n", $chars[$charIndex]{name}), "connection";
+					$AI::temp::delIndex = $charIndex;
+					$timeout{charlogin}{time} = time;
+				} else {
+					message TF("Character %s cannot be deleted yet. Please wait until %s\n", $chars[$charIndex]{name}, $chars[$charIndex]{deleteDate}), "info";
+					goto TOP;
+				}
 			} else {
-				$messageSender->sendCharDelete2($chars[$charIndex]{charID});
+				$messageSender->sendCharDelete2($chars[$charIndex]{charID}); # Request date deletion.
 			}
 		} else {
 			my $email = $interface->query("Enter your email address.");
@@ -1326,7 +1634,7 @@ sub chatLog_clear {
 sub checkAllowedMap {
 	my $map = shift;
 
-	return unless $AI == AI::AUTO;
+	return unless AI::state == AI::AUTO;
 	return unless $config{allowedMaps};
 	return if existsInList($config{allowedMaps}, $map);
 	return if $config{allowedMaps_reaction} == 0;
@@ -1413,7 +1721,7 @@ sub checkMonsterCleanness {
 			my $ID1=$_; 
 			my $source = Actor::get($_); 
 			unless ( existsInList($config{tankersList}, $source->{name}) || 
-				($char->{party} && %{$char->{party}} && $char->{party}{users}{$ID1} && %{$char->{party}{users}{$ID1}})) 
+				($char->{party}{joined} && $char->{party}{users}{$ID1} && %{$char->{party}{users}{$ID1}})) 
 			{ 
 				$allowed = 0; 
 				last; 
@@ -1488,7 +1796,20 @@ sub createCharacter {
 		return 0;
 	}
 
-	if ($messageSender->{char_create_version}) {
+	if ( $messageSender->{char_create_version} == 0x0A39 ) {
+		my $hair_style = shift if @_ && $_[0] =~ /^\d+$/;
+		my $hair_color = shift if @_ && $_[0] =~ /^\d+$/;
+
+		if ( grep { !/^(novice|summoner|male|female|m|f)$/io } @_ ) {
+			$interface->errorDialog( T( 'Unknown job or sex.' ), 0 );
+			return 0;
+		}
+
+		my $job_id = scalar( grep {/^summoner$/io} @_ ) ? 4218 : 0;
+		my $sex    = scalar( grep {/^male|m$/io} @_ )   ? 1    : 0;
+
+		$messageSender->sendCharCreate( $slot, $name, $hair_style, $hair_color, $job_id, $sex );
+	} elsif ($messageSender->{char_create_version}) {
 		my ($hair_style, $hair_color) = @_;
 
 		$messageSender->sendCharCreate($slot, $name,
@@ -1530,8 +1851,8 @@ sub createCharacter {
 # Sends $player a deal request.
 sub deal {
 	my $player = $_[0];
-	assert(defined $player) if DEBUG;
-	assert(UNIVERSAL::isa($player, 'Actor::Player')) if DEBUG;
+	assert(defined $player, "Can't deal with undef player") if DEBUG;
+	assertClass($player, 'Actor::Player') if DEBUG;
 
 	$outgoingDeal{ID} = $player->{ID};
 	$messageSender->sendDeal($player->{ID});
@@ -1544,7 +1865,7 @@ sub deal {
 sub dealAddItem {
 	my ($item, $amount) = @_;
 
-	$messageSender->sendDealAddItem($item->{index}, $amount);
+	$messageSender->sendDealAddItem($item->{ID}, $amount);
 	$currentDeal{lastItemAmount} = $amount;
 }
 
@@ -1560,7 +1881,7 @@ sub drop {
 		if (!$amount || $amount > $item->{amount}) {
 			$amount = $item->{amount};
 		}
-		$messageSender->sendDrop($item->{index}, $amount);
+		$messageSender->sendDrop($item->{ID}, $amount);
 	}
 }
 
@@ -1734,34 +2055,77 @@ sub inInventory {
 	my $item = $char->inventory->getByName($itemIndex);
 	return if !$item;
 	return unless $item->{amount} >= $quantity;
-	return $item->{invIndex};
+	return $item->{binID};
 }
 
 ##
-# inventoryItemRemoved($invIndex, $amount)
+# inventoryItemRemoved($binID, $amount)
 #
-# Removes $amount of $invIndex from $char->{inventory}.
+# Removes $amount of $binID from $char->{inventory}.
 # Also prints a message saying the item was removed (unless it is an arrow you
 # fired).
 sub inventoryItemRemoved {
-	my ($invIndex, $amount) = @_;
+	my ($binID, $amount) = @_;
 
 	return if $amount == 0;
-	my $item = $char->inventory->get($invIndex);
-	if (!$char->{arrow} || ($item && $char->{arrow} != $item->{index})) {
+	my $item = $char->inventory->get($binID);
+	if (!$char->{arrow} || ($item && $char->{arrow} ne $item->{ID})) {
 		# This item is not an equipped arrow
-		message TF("Inventory Item Removed: %s (%d) x %d\n", $item->{name}, $invIndex, $amount), "inventory";
+		message TF("Inventory Item Removed: %s (%d) x %d\n", $item->{name}, $binID, $amount), "inventory";
 	}
 	$item->{amount} -= $amount;
 	if ($item->{amount} <= 0) {
-		if ($char->{arrow} && $char->{arrow} == $item->{index}) {
-			message TF("Run out of Arrow/Bullet: %s (%d)\n", $item->{name}, $invIndex), "inventory";
+		if ($char->{arrow} && $char->{arrow} eq $item->{ID}) {
+			message TF("Run out of Arrow/Bullet: %s (%d)\n", $item->{name}, $binID), "inventory";
 			delete $char->{equipment}{arrow};
 			delete $char->{arrow};
 		}
-		$char->inventory->remove($item);
+		if( defined $item->{'name'}) {
+			$char->inventory->remove($item);
+		} else {
+			warning "Server sended item_removed but we not have this item anymore. binID: ".$binID."\n";
+		}
 	}
 	$itemChange{$item->{name}} -= $amount;
+	Plugins::callHook('inventory_item_removed', {item => $item, index => $binID, amount => $amount, remaining => ($item->{amount} <= 0 ? 0 : $item->{amount})});
+}
+
+##
+# storageItemRemoved($binID, $amount)
+#
+# Removes $amount of $binID from $char->{storage}.
+# Also prints a message saying the item was removed
+sub storageItemRemoved {
+	my ($binID, $amount) = @_;
+
+	return if $amount == 0;
+	my $item = $char->storage->get($binID);
+	message TF("Storage Item Removed: %s (%d) x %s\n", $item->{name}, $binID, $amount), "storage";
+	$item->{amount} -= $amount;
+	if ($item->{amount} <= 0) {
+		$char->storage->remove($item);
+	}
+	$itemChange{$item->{name}} -= $amount;
+	Plugins::callHook('storage_item_removed', {item => $item, index => $binID, amount => $amount, remaining => ($item->{amount} <= 0 ? 0 : $item->{amount})});
+}
+
+##
+# cartItemRemoved($binID, $amount)
+#
+# Removes $amount of $binID from $char->{cart}.
+# Also prints a message saying the item was removed
+sub cartItemRemoved {
+	my ($binID, $amount) = @_;
+
+	return if $amount == 0;
+	my $item = $char->cart->get($binID);
+	message TF("Cart Item Removed: %s (%d) x %s\n", $item->{name}, $binID, $amount), "cart";
+	$item->{amount} -= $amount;
+	if ($item->{amount} <= 0) {
+		$char->cart->remove($item);
+	}
+	$itemChange{$item->{name}} -= $amount;
+	Plugins::callHook('cart_item_removed', {item => $item, index => $binID, amount => $amount, remaining => ($item->{amount} <= 0 ? 0 : $item->{amount})});
 }
 
 # Resolve the name of a card
@@ -1811,8 +2175,20 @@ sub itemName {
 	my $suffix = "";
 	my @cards;
 	my %cards;
+	
+	my $item_len = length($item);
+	my $card_unpack;
+	
+	# FIXME WORKAROUND TO ITEMID 4BYTES
+	if ($masterServer->{itemListType}) {
+		$card_unpack = "V";
+	} else {
+		$card_unpack = "v";
+	}
+	
+	my $card_len = length pack $card_unpack;
 	for (my $i = 0; $i < 4; $i++) {
-		my $card = unpack("v1", substr($item->{cards}, $i*2, 2));
+		my $card = unpack($card_unpack, substr($item->{cards}, $i*$card_len, $card_len));
 		next unless $card;
 		push(@cards, $card);
 		($cards{$card} ||= 0) += 1;
@@ -1834,9 +2210,16 @@ sub itemName {
 		my $elementID = $cards[1] % 10;
 		my $elementName = $elements_lut{$elementID};
 		my $starCrumbs = ($cards[1] >> 8) / 5;
-		if ($starCrumbs >= 1 && $starCrumbs <= 3 ) {
-			$prefix .= (T("V")x$starCrumbs).T("S ") if $starCrumbs;
+		
+		# Translation-friendly
+		if ($starCrumbs == 1) {
+			$prefix .= T("VS ");
+		} elsif ($starCrumbs == 2) {
+			$prefix .= T("VVS ");
+		} elsif ($starCrumbs == 3) {
+			$prefix .= T("VVVS ");
 		}
+
 		# $prefix .= "$elementName " if ($elementName ne "");
 		$suffix = "$elementName" if ($elementName ne "");
 	} elsif (@cards) {
@@ -1850,6 +2233,15 @@ sub itemName {
 		} sort { cardName($a) cmp cardName($b) } keys %cards);
 	}
 
+    my $total_options = 0;
+
+	my @options = grep { $_->{type} } map { my @c = unpack 'vvC', $_;{ type => $c[0], value => $c[1], param => $c[2] } } unpack '(a5)*', $item->{options} || '';
+	foreach ( @options ) {
+		if ( $_->{type} ) {
+			$total_options++;
+		}
+	}
+
 	my $numSlots = $itemSlotCount_lut{$item->{nameID}} if ($prefix eq "");
 
 	my $display = "";
@@ -1859,6 +2251,7 @@ sub itemName {
 	$display .= $name;
 	$display .= " [$suffix]" if $suffix;
 	$display .= " [$numSlots]" if $numSlots;
+	$display .= " [$total_options Option]" if $total_options;
 
 	return $display;
 }
@@ -1875,10 +2268,46 @@ sub itemNameToID {
 	}
 }
 
+sub itemNameToIDList {
+	my $itemName = lc shift;
+	return if !$itemName;
+	$itemName =~ s/^[\t\s]*//;	# Remove leading tabs and whitespace
+	$itemName =~ s/\s+$//g;	# Remove trailing whitespace
+	
+	my @id_list;
+	
+	for my $hashID (keys %items_lut) {
+		if ($itemName eq lc($items_lut{$hashID})) {
+			push @id_list, $hashID;
+		}
+	}
+	
+	return @id_list;
+}
+
+sub containsItemNameToIDList {
+	my $itemName = lc shift;
+	return if !$itemName;
+	$itemName =~ s/^[\t\s]*//;	# Remove leading tabs and whitespace
+	$itemName =~ s/\s+$//g;	# Remove trailing whitespace
+	
+	my @id_list;
+	
+	for my $hashID (keys %items_lut) {
+		if (index(lc($items_lut{$hashID}), $itemName) != -1) {
+			push @id_list, $hashID;
+		}
+	}
+	
+	return @id_list;
+}
+
 ##
-# storageGet(items, max)
+# DEPRECATED: Use transferItems() instead.
+#
+# storageGet(items, amount)
 # items: reference to an array of storage item hashes.
-# max: the maximum amount to get, for each item, or 0 for unlimited.
+# amount: the maximum amount to get, for each item, or 0 for unlimited.
 #
 # Get one or more items from storage.
 #
@@ -1888,23 +2317,36 @@ sub itemNameToID {
 # # Get items $a and $b from storage, but at most 30 of each item.
 # storageGet([$a, $b], 30);
 sub storageGet {
-	my $indices = shift;
-	my $max = shift;
+	my ( $items, $amount ) = @_;
+	transferItems( $items, $amount, 'storage' => 'inventory' );
+}
 
-	if (@{$indices} == 1) {
-		my ($item) = @{$indices};
-		if (!defined($max) || $max > $item->{amount}) {
-			$max = $item->{amount};
+##
+# transferItems(items, amount, source, target)
+# items: reference to an array of Actor::Items.
+# amount: the maximum amount to get, for each item, or 0 for unlimited.
+# source: where the items come from; one of 'inventory', 'storage', 'cart'
+# target: where the items should go; one of 'inventory', 'storage', 'cart'
+#
+# Transfer one or more items from their current location to another location.
+#
+# Example:
+# # Get items $a and $b from storage to inventory.
+# transferItems([$a, $b], 'storage' => 'inventory');
+# # Send items $a and $b from cart to storage, but at most 30 of each item.
+# transferItems([$a, $b], 30, 'cart' => 'storage');
+sub transferItems {
+	my ( $items, $amount, $source, $target ) = @_;
+
+	AI::queue(
+		transferItems => {
+			timeout => $timeout{ai_transfer_items}{timeout} || 0.15,
+			items => [ map { { item => $_, source => $source, target => $target, amount => $amount } } @$items ],
 		}
-		$messageSender->sendStorageGet($item->{index}, $max);
+	);
 
-	} else {
-		my %args;
-		$args{items} = $indices;
-		$args{max} = $max;
-		$args{timeout} = 0.15;
-		AI::queue("storageGet", \%args);
-	}
+	# Immediately run the AI sequence once. This will remove it from the queue if there's only one item to transfer.
+	AI::CoreLogic::processTransferItems();
 }
 
 ##
@@ -1933,6 +2375,7 @@ sub headgearName {
 #
 # Generate a unique seed for the current user and save it to
 # a file, or load the seed from that file if it exists.
+=pod
 sub initUserSeed {
 	my $seedFile = "$Settings::logs_folder/seed.txt";
 	my $f;
@@ -1959,6 +2402,7 @@ sub initUserSeed {
 		}
 	}
 }
+=cut
 
 sub itemLog_clear {
 	if (-f $Settings::item_log_file) { unlink($Settings::item_log_file); }
@@ -2092,7 +2536,7 @@ sub objectAdded {
 
 	if ($type eq 'player' || $type eq 'slave') {
 		# Try to retrieve the player name from cache.
-		if (!getPlayerNameFromCache($obj)) {
+		if (!getPlayerNameFromCache($obj) && !$obj->{clone}) {
 			push @unknownPlayers, $ID;
 		}
 
@@ -2130,46 +2574,59 @@ sub objectRemoved {
 }
 
 ##
-# items_control($name)
+# items_control($name, $nameID)
 #
 # Returns the items_control.txt settings for item name $name.
-# If $name has no specific settings, use 'all'.
+# If $name has no specific settings, try using the setting for $nameID.
+# If both have no specific setting, use 'all'.
+# If 'all' is not set, return "do nothing" (empty hash);
 sub items_control {
-	my ($name) = @_;
+	my ($name, $nameID) = @_;
 
-	return $items_control{lc($name)} || $items_control{all} || {};
+	return $items_control{lc($name)} || $items_control{$nameID} || $items_control{all} || {};
 }
 
 ##
-# mon_control($name)
+# mon_control($name, $nameID)
 #
 # Returns the mon_control.txt settings for monster name $name.
-# If $name has no specific settings, use 'all'.
+# If $name has no specific settings, try using the setting for $nameID.
+# If both have no specific setting, use 'all'.
+# If 'all' is not set, return "attack";
 sub mon_control {
-	my $name = shift;
-	my $nameID = shift;
+	my ($name, $nameID) = @_;
+	
 	return $mon_control{lc($name)} || $mon_control{$nameID} || $mon_control{all} || { attack_auto => 1 };
 }
 
 ##
-# pickupitems($name)
+# pickupitems($name, $nameID)
 #
 # Returns the pickupitems.txt settings for item name $name.
-# If $name has no specific settings, use 'all'.
+# If $name has no specific settings, try using the setting for $nameID.
+# If both have no specific setting, use 'all'.
+# If 'all' is not set, return "pick up" (1);
 sub pickupitems {
-	my ($name) = @_;
+	my ($name, $nameID) = @_;
 
-	return ($pickupitems{lc($name)} ne '') ? $pickupitems{lc($name)} : $pickupitems{all};
+	if (exists $pickupitems{lc($name)}) {
+		return $pickupitems{lc($name)};
+	} elsif (exists $pickupitems{$nameID}) {
+		return $pickupitems{$nameID};
+	} elsif (exists $pickupitems{all}) {
+		return $pickupitems{all};
+	}
+	
+	return 1;
 }
 
 sub positionNearPlayer {
 	my $r_hash = shift;
 	my $dist = shift;
 
-	my $players = $playersList->getItems();
-	foreach my $player (@{$players}) {
+	for my $player (@$playersList) {
 		my $ID = $player->{ID};
-		next if ($char->{party} && $char->{party}{users} &&
+		next if ($char->{party}{joined} && $char->{party}{users} &&
 			$char->{party}{users}{$ID});
 		next if (defined($player->{name}) && existsInList($config{tankersList}, $player->{name}));
 		return 1 if (distance($r_hash, $player->{pos_to}) <= $dist);
@@ -2181,24 +2638,35 @@ sub positionNearPortal {
 	my $r_hash = shift;
 	my $dist = shift;
 
-	my $portals = $portalsList->getItems();
-	foreach my $portal (@{$portals}) {
+	for my $portal (@$portalsList) {
 		return 1 if (distance($r_hash, $portal->{pos}) <= $dist);
 	}
 	return 0;
 }
 
 ##
-# printItemDesc(itemID)
+# printItemDesc(obj $item)
 #
-# Print the description for $itemID.
+# Print the description for $item.
 sub printItemDesc {
-	my $itemID = shift;
-	my $itemName = itemNameSimple($itemID);
-	my $description = $itemsDesc_lut{$itemID} || T("Error: No description available.\n");
-	message TF("===============Item Description===============\nItem: %s (ID: %s)\n\n", $itemName, $itemID), "info";
-	message($description, "info");
-	message("==============================================\n", "info");
+	my $item = shift;
+
+	my $description = $itemsDesc_lut{$item->{nameID}} || T("Error: No description available.\n");
+	my $msg =  center(T(" Item Description "), 79, '-') ."\n";
+	$msg .= TF("Item: %s, ID: %s, Amount: %s\n\n", $item->{name}, $item->{nameID}, $item->{amount}), "info";
+	my @options = grep { $_->{type} } map { my @c = unpack 'vvC', $_;{ type => $c[0], value => $c[1], param => $c[2] } } unpack '(a5)*', $item->{options} || '';
+	my $option_index = 1;
+	foreach ( @options ) {
+		if ( $itemOptionHandle{$_->{type}} && $itemOption_lut{$itemOptionHandle{$_->{type}}} ) {
+			$msg .= TF("OPTION %s: ", $option_index) . sprintf($itemOption_lut{$itemOptionHandle{$_->{type}}}, $_->{value}) . "\n";
+		} else {
+			$msg .= TF("OPTION %s: Option (%d, %d, %d)\n", $option_index, $_->{type}, $_->{value},$_->{param});
+		}
+		$option_index++;
+	}
+	$msg .=  $description;
+	$msg .= ('-'x79) . "\n";
+	message $msg, "info";
 }
 
 sub processNameRequestQueue {
@@ -2344,6 +2812,8 @@ sub sendMessage_send {
 		$sender->sendPrivateMsg($user, $msg);
 	} elsif ($type eq "k") {
 		$sender->injectMessage($msg);
+	} elsif ($type eq "cln") {
+		$sender->sendClanChat($msg);
 	}
 }
 
@@ -2377,6 +2847,7 @@ sub setPartySkillTimer {
 
 	# set partySkill target_time
 	my $i = $targetTimeout{$targetID}{$handle};
+	$ai_v{"partySkill_${i}_time"} = time if $i ne "";
 	$ai_v{"partySkill_${i}_target_time"}{$targetID} = time if $i ne "";
 }
 
@@ -2393,8 +2864,8 @@ sub setPartySkillTimer {
 # TODO: move to Actor?
 sub setStatus {
 	my ($actor, $opt1, $opt2, $option) = @_;
-	assert(defined $actor) if DEBUG;
-	assert(UNIVERSAL::isa($actor, 'Actor')) if DEBUG;
+	assert(defined $actor, "Can't set status of undef actor") if DEBUG;
+	assertClass($actor, 'Actor') if DEBUG;
 	my $verbosity = $actor->{ID} eq $accountID ? 1 : 2;
 	my $changed = 0;
 
@@ -2519,8 +2990,8 @@ sub countCastOn {
 
 	my $source = Actor::get($sourceID);
 	my $target = Actor::get($targetID);
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
-	assert(UNIVERSAL::isa($target, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
+	assertClass($target, 'Actor') if DEBUG;
 
 	if ($targetID eq $accountID) {
 		$source->{castOnToYou}++;
@@ -2645,7 +3116,7 @@ sub updateDamageTables {
 				);
 			$monster->{target} = $targetID;
 
-			if ($AI == 2) {
+			if (AI::state == 2) {
 				my $teleport = 0;
 				if (mon_control($monster->{name},$monster->{nameID})->{teleport_auto} == 2 && $damage){
 					message TF("Teleporting due to attack from %s\n",
@@ -2757,7 +3228,7 @@ sub updateDamageTables {
 				);
 			if (existsInList($config{tankersList}, $player->{name}) ||
 			    ($char->{slaves} && %{$char->{slaves}} && $char->{slaves}{$targetID} && %{$char->{slaves}{$targetID}}) ||
-			    ($char->{party} && %{$char->{party}} && $char->{party}{users}{$targetID} && %{$char->{party}{users}{$targetID}})) {
+			    ($char->{party}{joined} && $char->{party}{users}{$targetID} && %{$char->{party}{users}{$targetID}})) {
 				# Monster attacks party member or our slave
 				$monster->{dmgToParty} += $damage;
 				$monster->{missedToParty}++ if ($damage == 0);
@@ -2765,7 +3236,7 @@ sub updateDamageTables {
 			$monster->{target} = $targetID;
 			OpenKoreMod::updateDamageTables($monster) if (defined &OpenKoreMod::updateDamageTables);
 
-			if ($AI == AI::AUTO && ($accountID eq $targetID or $char->{slaves} && $char->{slaves}{$targetID})) {
+			if (AI::state == AI::AUTO && ($accountID eq $targetID or $char->{slaves} && $char->{slaves}{$targetID})) {
 				# object under our control
 				my $teleport = 0;
 				if (mon_control($monster->{name},$monster->{nameID})->{teleport_auto} == 2 && $damage){
@@ -2883,7 +3354,7 @@ sub updateDamageTables {
 			}
 
 			if (existsInList($config{tankersList}, $player->{name}) || ($char->{slaves} && $char->{slaves}{$sourceID}) ||
-			    ($char->{party} && %{$char->{party}} && $char->{party}{users}{$sourceID} && %{$char->{party}{users}{$sourceID}})) {
+			    ($char->{party}{joined} && $char->{party}{users}{$sourceID} && %{$char->{party}{users}{$sourceID}})) {
 				$monster->{dmgFromParty} += $damage;
 				
 				if ($damage == 0) {
@@ -3025,7 +3496,13 @@ sub useTeleport {
 			return 1;
 		}
 	}
-
+	# We used all not item teleport options.
+	# Cheking inventory->isReady() before looking for items to teleport.
+	# Timing out if not ready.
+	if (!$char->inventory->isReady()){
+		$timeout{ai_teleport}{time} = time;
+		return 0;
+	}
 	# No skill try to equip a Tele clip or something,
 	# if teleportAuto_equip_* is set
 	if (Actor::Item::scanConfigAndCheck('teleportAuto_equip') && ($use_lvl == 1 || !$config{'teleportAuto_useItemForRespawn'})) {
@@ -3057,6 +3534,7 @@ sub useTeleport {
 			unless ($item) { $item = $char->inventory->getByNameID(12323); } # only if we don't have any fly wing
 		} else {
 			$item = $char->inventory->getByName($config{teleportAuto_item1});
+			$item = $char->inventory->getByNameID($config{teleportAuto_item1}) if (!($item) && $config{teleportAuto_item1} =~ /^\d{3,}$/);
 		}
 	} elsif ($use_lvl == 2) { #Butterfly Wing
 		if (!$config{teleportAuto_item2}) {
@@ -3064,6 +3542,7 @@ sub useTeleport {
 			unless ($item) { $item = $char->inventory->getByNameID(12324); } # only if we don't have any butterfly wing
 		} else {
 			$item = $char->inventory->getByName($config{teleportAuto_item2});
+			$item = $char->inventory->getByNameID($config{teleportAuto_item2}) if (!($item) && $config{teleportAuto_item2} =~ /^\d{3,}$/);
 		}
 	}
 
@@ -3072,7 +3551,7 @@ sub useTeleport {
 		# Don't spam the "use fly wing" packet, or we'll end up using too many wings.
 		if (timeOut($timeout{ai_teleport})) {
 			Plugins::callHook('teleport_sent', \%args);
-			$messageSender->sendItemUse($item->{index}, $accountID);
+			$messageSender->sendItemUse($item->{ID}, $accountID);
 			$timeout{ai_teleport}{time} = time;
 		}
 		return 1;
@@ -3150,11 +3629,9 @@ sub writeStorageLog {
 
 	if (open($f, ">:utf8", $Settings::storage_log_file)) {
 		print $f TF("---------- Storage %s -----------\n", getFormattedDate(int(time)));
-		for (my $i = 0; $i < @storageID; $i++) {
-			next if (!$storageID[$i]);
-			my $item = $storage{$storageID[$i]};
+		for my $item (@{$char->storage}) {
 
-			my $display = sprintf "%2d %s x %s", $i, $item->{name}, $item->{amount};
+			my $display = sprintf "%2d %s x %s", $item->{binID}, $item->{name}, $item->{amount};
 			# Translation Comment: Mark to show not identified items
 			$display .= " -- " . T("Not Identified") if !$item->{identified};
 			# Translation Comment: Mark to show broken items
@@ -3162,7 +3639,7 @@ sub writeStorageLog {
 			print $f "$display\n";
 		}
 		# Translation Comment: Storage Capacity
-		print $f TF("\nCapacity: %d/%d\n", $storage{items}, $storage{items_max});
+		print $f TF("\nCapacity: %d/%d\n", $char->storage->items, $char->storage->items_max);
 		print $f "-------------------------------\n";
 		close $f;
 
@@ -3313,8 +3790,8 @@ sub isSafeActorQuery {
 # Generates a proper message string for when actor $source attacks actor $target.
 sub attack_string {
 	my ($source, $target, $damage, $delay) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
-	assert(UNIVERSAL::isa($target, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
+	assertClass($target, 'Actor') if DEBUG;
 
 	return TF("%s %s %s (Dmg: %s) (Delay: %sms)\n",
 		$source->nameString,
@@ -3325,8 +3802,8 @@ sub attack_string {
 
 sub skillCast_string {
 	my ($source, $target, $x, $y, $skillName, $delay) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
-	assert(UNIVERSAL::isa($target, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
+	assertClass($target, 'Actor') if DEBUG;
 	
 	return TF("%s %s %s on %s (Delay: %sms)\n",
 		$source->nameString(),
@@ -3338,14 +3815,14 @@ sub skillCast_string {
 
 sub skillUse_string {
 	my ($source, $target, $skillName, $damage, $level, $delay) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
-	assert(UNIVERSAL::isa($target, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
+	assertClass($target, 'Actor') if DEBUG;
 
 	return sprintf("%s %s %s%s %s %s%s%s\n",
 		$source->nameString(),
 		$source->verb(T('use'), T('uses')),
 		$skillName,
-		($level != 65535) ? ' ' . TF("(Lv: %s)", $level) : '',
+		($level != 65535 && $level != 4294967295) ? ' ' . TF("(Lv: %s)", $level) : '',
 		T('on'),
 		$target->nameString($source),
 		($damage != -30000) ? ' ' . TF("(Dmg: %s)", $damage || T('Miss')) : '',
@@ -3354,13 +3831,13 @@ sub skillUse_string {
 
 sub skillUseLocation_string {
 	my ($source, $skillName, $args) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
 	
 	return sprintf("%s %s %s%s %s (%d, %d)\n",
 		$source->nameString(),
 		$source->verb(T('use'), T('uses')),
 		$skillName,
-		($args->{lv} != 65535) ? ' ' . TF("(Lv: %s)", $args->{lv}) : '',
+		($args->{lv} != 65535 && $args->{lv} != 4294967295) ? ' ' . TF("(Lv: %s)", $args->{lv}) : '',
 		T('on location'),
 		$args->{x},
 		$args->{y});
@@ -3369,8 +3846,8 @@ sub skillUseLocation_string {
 # TODO: maybe add other healing skill ID's?
 sub skillUseNoDamage_string {
 	my ($source, $target, $skillID, $skillName, $amount) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
-	assert(UNIVERSAL::isa($target, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
+	assertClass($target, 'Actor') if DEBUG;
 
 	return sprintf("%s %s %s %s %s%s\n",
 		$source->nameString(),
@@ -3378,12 +3855,12 @@ sub skillUseNoDamage_string {
 		$skillName,
 		T('on'),
 		$target->nameString($source),
-		($skillID == 28) ? ' ' . TF("(Gained: %s hp)", $amount) : ($amount) ? ' ' . TF("(Lv: %s)", $amount) : '');
+		($skillID == 28) ? ' ' . TF("(Gained: %s hp)", $amount) : ($amount && $amount != 65535 && $amount != 4294967295) ? ' ' . TF("(Lv: %s)", $amount) : '');
 }
 
 sub status_string {
 	my ($source, $statusName, $mode, $seconds) = @_;
-	assert(UNIVERSAL::isa($source, 'Actor')) if DEBUG;
+	assertClass($source, 'Actor') if DEBUG;
 
 	# Translation Comment: "you/actor" "are/is now/again/nolonger" "status" "(duration)"
 	TF("%s %s: %s%s\n",
@@ -3459,21 +3936,19 @@ sub percent_weight {
 #######################################
 
 sub avoidGM_near {
-	my $players = $playersList->getItems();
-	foreach my $player (@{$players}) {
+	for my $player (@$playersList) {
 		# skip this person if we dont know the name
 		next if (!defined $player->{name});
 
-		# Check whether this "GM" is on the ignore list
-		# in order to prevent false matches
-		last if (existsInList($config{avoidGM_ignoreList}, $player->{name}));
+		# Check whether this "GM" is on the ignore list in order to prevent false matches
+		next if (existsInList($config{avoidGM_ignoreList}, $player->{name}));
 
 		# check if this name matches the GM filter
-		last unless ($config{avoidGM_namePattern} ? $player->{name} =~ /$config{avoidGM_namePattern}/ : $player->{name} =~ /^([a-z]?ro)?-?(Sub)?-?\[?GM\]?/i);
+		next unless ($config{avoidGM_namePattern} ? $player->{name} =~ /$config{avoidGM_namePattern}/ : $player->{name} =~ /^([a-z]?ro)?-?(Sub)?-?\[?GM\]?/i);
 
 		my %args = (
 			name => $player->{name},
-			ID => $player->{ID}
+			ID => $player->{nameID}
 		);
 		Plugins::callHook('avoidGM_near', \%args);
 		return 1 if ($args{return});
@@ -3482,23 +3957,28 @@ sub avoidGM_near {
 		if ($config{avoidGM_near} == 1) {
 			# Mode 1: teleport & disconnect
 			useTeleport(1);
-			$msg = TF("GM %s is nearby, teleport & disconnect for %d seconds", $player->{name}, $config{avoidGM_reconnect});
+			$msg = TF("GM %s (%d) is nearby, teleport & disconnect for %d seconds", $player->{name}, $player->{nameID}, $config{avoidGM_reconnect});
 			relog($config{avoidGM_reconnect}, 1);
 
 		} elsif ($config{avoidGM_near} == 2) {
 			# Mode 2: disconnect
-			$msg = TF("GM %s is nearby, disconnect for %s seconds", $player->{name}, $config{avoidGM_reconnect});
+			$msg = TF("GM %s (%d) is nearby, disconnect for %s seconds", $player->{name}, $player->{nameID}, $config{avoidGM_reconnect});
 			relog($config{avoidGM_reconnect}, 1);
 
 		} elsif ($config{avoidGM_near} == 3) {
 			# Mode 3: teleport
 			useTeleport(1);
-			$msg = TF("GM %s is nearby, teleporting", $player->{name});
+			$msg = TF("GM %s (%d) is nearby, teleporting", $player->{name}, $player->{nameID});
 
-		} elsif ($config{avoidGM_near} >= 4) {
+		} elsif ($config{avoidGM_near} == 4) {
 			# Mode 4: respawn
 			useTeleport(2);
-			$msg = TF("GM %s is nearby, respawning", $player->{name});
+			$msg = TF("GM %s (%d) is nearby, respawning", $player->{name}, $player->{nameID});
+		} elsif ($config{avoidGM_near} >= 5) {
+			# Mode 5: respawn & disconnect
+			useTeleport(2);
+			$msg = TF("GM %s (%d) is nearby, respawning & disconnect for %d seconds", $player->{name}, $player->{nameID}, $config{avoidGM_reconnect});
+			relog($config{avoidGM_reconnect}, 1);
 		}
 
 		warning "$msg\n";
@@ -3516,27 +3996,74 @@ sub avoidGM_near {
 # Checks if any of the surrounding players are on the avoid.txt avoid list.
 # Disconnects / teleports if a player is detected.
 sub avoidList_near {
+	my $return = 0;
 	return if ($config{avoidList_inLockOnly} && $field->baseName ne $config{lockMap});
 
-	my $players = $playersList->getItems();
-	foreach my $player (@{$players}) {
+	for my $player (@$playersList) {
+		# skip this person if we dont know the name
+		next if (!defined $player->{name});
+		# Check whether this Player is on the ignore list in order to prevent false matches
+		next if (existsInList($config{avoidList_ignoreList}, $player->{name}));
+
 		my $avoidPlayer = $avoid{Players}{lc($player->{name})};
 		my $avoidID = $avoid{ID}{$player->{nameID}};
-		if (!$net->clientAlive() && ( ($avoidPlayer && $avoidPlayer->{disconnect_on_sight}) || ($avoidID && $avoidID->{disconnect_on_sight}) )) {
-			warning TF("%s (%s) is nearby, disconnecting...\n", $player->{name}, $player->{nameID});
-			chatLog("k", TF("*** Found %s (%s) nearby and disconnected ***\n", $player->{name}, $player->{nameID}));
-			warning TF("Disconnect for %s seconds...\n", $config{avoidList_reconnect});
-			relog($config{avoidList_reconnect}, 1);
-			return 1;
+		my $avoidJob = $avoid{Jobs}{lc($jobs_lut{$player->{jobID}})};
 
-		} elsif (($avoidPlayer && $avoidPlayer->{teleport_on_sight}) || ($avoidID && $avoidID->{teleport_on_sight})) {
-			message TF("Teleporting to avoid player %s (%s)\n", $player->{name}, $player->{nameID}), "teleport";
-			chatLog("k", TF("*** Found %s (%s) nearby and teleported ***\n", $player->{name}, $player->{nameID}));
+		# next if the player is not on the avoid list
+		next if (!$avoidPlayer and !$avoidID and !$avoidJob);
+
+		my %args = (
+			name => $player->{name},
+			ID => $player->{nameID},
+			jobID => $player->{jobID},
+			Jobs => $jobs_lut{$player->{jobID}}
+		);
+		Plugins::callHook('avoidList_near', \%args);
+
+		my $msg;
+		if ( ($avoidPlayer && $avoidPlayer->{teleport_on_sight} == 1 && $avoidPlayer->{disconnect_on_sight} == 1) 
+			|| ($avoidID && $avoidID->{teleport_on_sight} &&  $avoidID->{disconnect_on_sight}) 
+			|| ($avoidJob && $avoidJob->{teleport_on_sight} &&  $avoidJob->{disconnect_on_sight}) ) {
+			# like avoidGM_near Mode 1: teleport & disconnect
 			useTeleport(1);
-			return 1;
+			$msg = TF("Player %s (%d, %s) is nearby, teleport & disconnect for %d seconds", $player->{name}, $player->{nameID}, $jobs_lut{$player->{jobID}}, $config{avoidList_reconnect});
+			relog($config{avoidList_reconnect}, 1);
+			$return = 1;
+
+		} elsif ( ($avoidPlayer && $avoidPlayer->{teleport_on_sight} && $avoidPlayer->{disconnect_on_sight}) 
+			|| ($avoidID && $avoidID->{teleport_on_sight} &&  $avoidID->{disconnect_on_sight}) 
+			|| ($avoidJob && $avoidJob->{teleport_on_sight} &&  $avoidJob->{disconnect_on_sight}) ) {
+			# like avoidGM_near Mode 5: respawn & disconnect
+			useTeleport(2);
+			$msg = TF("Player %s (%d, %s) is nearby, respawning & disconnect for %d seconds", $player->{name}, $player->{nameID}, $jobs_lut{$player->{jobID}}, $config{avoidList_reconnect});
+			relog($config{avoidList_reconnect}, 1);
+			$return = 1;
+
+		} elsif ( !$net->clientAlive() && ( ($avoidPlayer && $avoidPlayer->{disconnect_on_sight}) || 
+			($avoidID && $avoidID->{disconnect_on_sight}) && ($avoidJob && $avoidJob->{disconnect_on_sight}) ) ) {
+			# like avoidGM_near Mode 2: disconnect
+			$msg = TF("Player %s (%d, %s) is nearby, disconnect for %s seconds", $player->{name}, $player->{nameID}, $jobs_lut{$player->{jobID}}, $config{avoidList_reconnect});
+			relog($config{avoidList_reconnect}, 1);
+			$return = 1;
+
+		} elsif ( ($avoidPlayer && $avoidPlayer->{teleport_on_sight} == 1) || ($avoidID && $avoidID->{teleport_on_sight} == 1) || ($avoidJob && $avoidJob->{teleport_on_sight} == 1) ) {
+			# like avoidGM_near Mode 3: teleport
+			useTeleport(1);
+			$msg = TF("Player %s (%d, %s) is nearby, teleporting", $player->{name}, $player->{nameID}, $jobs_lut{$player->{jobID}});
+			$return = 1;
+
+		} elsif ( ($avoidPlayer && $avoidPlayer->{teleport_on_sight} == 2) || ($avoidID && $avoidID->{teleport_on_sight} == 2) || ($avoidJob && $avoidJob->{teleport_on_sight} == 2) ) {
+			# like avoidGM_near Mode 4: respawn
+			useTeleport(2);
+			$msg = TF("Player %s (%d, %s) is nearby, respawning", $player->{name}, $player->{nameID}, $jobs_lut{$player->{jobID}});
+			$return = 1;
 		}
+
+		warning "$msg\n";
+		chatLog("k", "*** $msg ***\n");
+		
 	}
-	return 0;
+	return $return;
 }
 
 sub avoidList_ID {
@@ -3741,7 +4268,7 @@ sub getActorNames {
 
 # return ID based on name if party member is online
 sub findPartyUserID {
-	if ($char->{party} && %{$char->{party}}) {
+	if ($char->{party}{joined}) {
 		my $partyUserName = shift;
 		for (my $j = 0; $j < @partyUsersID; $j++) {
 	        	next if ($partyUsersID[$j] eq "");
@@ -3780,17 +4307,19 @@ sub checkSelfCondition {
 	return 0 if (!$prefix);
 	return 0 if ($config{$prefix . "_disabled"});
 
-	return 0 if $config{$prefix."_whenIdle"} && !AI::isIdle();
+	return 0 if ($config{$prefix."_whenIdle"} && !AI::isIdle);
+
+	return 0 if ($config{$prefix."_whenNotIdle"} && AI::isIdle);
 
 	# *_manualAI 0 = auto only
 	# *_manualAI 1 = manual only
 	# *_manualAI 2 = auto or manual
 	if ($config{$prefix . "_manualAI"} == 0 || !(defined $config{$prefix . "_manualAI"})) {
-		return 0 unless $AI == AI::AUTO;
+		return 0 unless AI::state == AI::AUTO;
 	} elsif ($config{$prefix . "_manualAI"} == 1){
-		return 0 unless $AI == AI::MANUAL;
+		return 0 unless AI::state == AI::MANUAL;
 	} else {
-		return 0 if $AI == AI::OFF;
+		return 0 if AI::state == AI::OFF;
 	}
 
 	if ($config{$prefix . "_hp"}) {
@@ -3824,7 +4353,7 @@ sub checkSelfCondition {
 	if ($char->{homunculus}) {
 		if ($config{$prefix . "_homunculus_hp"}) {
 			if ($config{$prefix."_homunculus_hp"} =~ /^(.*)\%$/) {
-				return 0 if (!inRange($char->{homunculus}{hpPercent}, $1));
+				return 0 if (!inRange($char->{homunculus}->hp_percent, $1));
 			} else {
 				return 0 if (!inRange($char->{homunculus}{hp}, $config{$prefix."_homunculus_hp"}));
 			}
@@ -3832,7 +4361,7 @@ sub checkSelfCondition {
 
 		if ($config{$prefix."_homunculus_sp"}) {
 			if ($config{$prefix."_homunculus_sp"} =~ /^(.*)\%$/) {
-				return 0 if (!inRange($char->{homunculus}{spPercent}, $1));
+				return 0 if (!inRange($char->{homunculus}->sp_percent, $1));
 			} else {
 				return 0 if (!inRange($char->{homunculus}{sp}, $config{$prefix."_homunculus_sp"}));
 			}
@@ -3845,6 +4374,22 @@ sub checkSelfCondition {
 		if ($config{$prefix."_homunculus_resting"}) {
 			return 0 unless ($char->{homunculus}{state} & 2); # 2 = rest
 		}
+		
+		if ($config{$prefix."_homunculus_onAction"}) {
+			return 0 unless (existsInList($config{$prefix . "_homunculus_onAction"}, $char->{homunculus}->action()));
+		}
+		
+		if ($config{$prefix."_homunculus_notOnAction"}) {
+			return 0 if (existsInList($config{$prefix . "_homunculus_notOnAction"}, $char->{homunculus}->action()));
+		}
+		
+		if ($config{$prefix."_homunculus_whenIdle"}) {
+			return 0 unless ($char->{homunculus}->isIdle);
+		}
+		
+		if ($config{$prefix."_homunculus_whenNotIdle"}) {
+			return 0 if ($char->{homunculus}->isIdle);
+		}
 	}
 
 	if ($config{$prefix."_mercenary"} =~ /\S/) {
@@ -3854,7 +4399,7 @@ sub checkSelfCondition {
 	if ($char->{mercenary}) {
 		if ($config{$prefix . "_mercenary_hp"}) {
 			if ($config{$prefix."_mercenary_hp"} =~ /^(.*)\%$/) {
-				return 0 if (!inRange($char->{mercenary}{hpPercent}, $1));
+				return 0 if (!inRange($char->{mercenary}->hp_percent, $1));
 			} else {
 				return 0 if (!inRange($char->{mercenary}{hp}, $config{$prefix."_mercenary_hp"}));
 			}
@@ -3862,7 +4407,7 @@ sub checkSelfCondition {
 
 		if ($config{$prefix."_mercenary_sp"}) {
 			if ($config{$prefix."_mercenary_sp"} =~ /^(.*)\%$/) {
-				return 0 if (!inRange($char->{mercenary}{spPercent}, $1));
+				return 0 if (!inRange($char->{mercenary}->sp_percent, $1));
 			} else {
 				return 0 if (!inRange($char->{mercenary}{sp}, $config{$prefix."_mercenary_sp"}));
 			}
@@ -3873,6 +4418,22 @@ sub checkSelfCondition {
 		}
 		if ($config{$prefix . "_mercenary_whenStatusInactive"}) {
 			return 0 if $char->{mercenary}->statusActive($config{$prefix . "_mercenary_whenStatusInactive"});
+		}
+		
+		if ($config{$prefix."_mercenary_onAction"}) {
+			return 0 unless (existsInList($config{$prefix . "_mercenary_onAction"}, $char->{mercenary}->action()));
+		}
+		
+		if ($config{$prefix."_mercenary_notOnAction"}) {
+			return 0 if (existsInList($config{$prefix . "_mercenary_notOnAction"}, $char->{mercenary}->action()));
+		}
+		
+		if ($config{$prefix."_mercenary_whenIdle"}) {
+			return 0 unless ($char->{mercenary}->isIdle);
+		}
+		
+		if ($config{$prefix."_mercenary_whenNotIdle"}) {
+			return 0 if ($char->{mercenary}->isIdle);
 		}
 	}
 
@@ -3930,12 +4491,13 @@ sub checkSelfCondition {
 	if ($config{$prefix . "_inLockOnly"} > 0) { return 0 unless ($field->baseName eq $config{lockMap}); }
 	if ($config{$prefix . "_notWhileSitting"} > 0) { return 0 if ($char->{sitting}); }
 	if ($config{$prefix . "_notInTown"} > 0) { return 0 if ($field->isCity); }
+	if ($config{$prefix . "_inTown"} > 0) { return 0 unless ($field->isCity); }
     if (defined $config{$prefix . "_monstersCount"}) {
 		my $nowMonsters = $monstersList->size();
 			if ($nowMonsters > 0 && $config{$prefix . "_notMonsters"}) {
-				my $monsters = $monstersList->getItems();
-				foreach my $monster (@{$monsters}) {
-					$nowMonsters-- if (existsInList($config{$prefix . "_notMonsters"}, $monster->{name}));
+				for my $monster (@$monstersList) {
+					$nowMonsters-- if (existsInList($config{$prefix . "_notMonsters"}, $monster->{name}) || 
+										existsInList($config{$prefix . "_notMonsters"}, $monster->{nameID}));
                 }
             }
 		return 0 unless (inRange($nowMonsters, $config{$prefix . "_monstersCount"}));
@@ -3943,7 +4505,8 @@ sub checkSelfCondition {
 	if ($config{$prefix . "_monsters"} && !($prefix =~ /skillSlot/i) && !($prefix =~ /ComboSlot/i)) {
 		my $exists;
 		foreach (ai_getAggressives()) {
-			if (existsInList($config{$prefix . "_monsters"}, $monsters{$_}->name)) {
+			if (existsInList($config{$prefix . "_monsters"}, $monsters{$_}->name) ||
+				existsInList($config{$prefix . "_monsters"}, $monsters{$_}->{nameID})) {
 				$exists = 1;
 				last;
 			}
@@ -3954,7 +4517,8 @@ sub checkSelfCondition {
 	if ($config{$prefix . "_defendMonsters"}) {
 		my $exists;
 		foreach (ai_getMonstersAttacking($accountID)) {
-			if (existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}->name)) {
+			if (existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}->name) ||
+				existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}->{nameID})) {
 				$exists = 1;
 				last;
 			}
@@ -3965,13 +4529,15 @@ sub checkSelfCondition {
 	if ($config{$prefix . "_notMonsters"} && !($prefix =~ /skillSlot/i) && !($prefix =~ /ComboSlot/i)) {
 		my $exists;
 		foreach (ai_getAggressives()) {
-			if (existsInList($config{$prefix . "_notMonsters"}, $monsters{$_}->name)) {
+			if (existsInList($config{$prefix . "_notMonsters"}, $monsters{$_}->name) || 
+				existsInList($config{$prefix . "_notMonsters"}, $monsters{$_}->{nameID})) {
 				return 0;
 			}
 		}
 	}
 
 	if ($config{$prefix."_inInventory"}) {
+		return 0 if (!$char->inventory->isReady());
 		foreach my $input (split / *, */, $config{$prefix."_inInventory"}) {
 			my ($itemName, $count) = $input =~ /(.*?)(?:\s+([><]=? *\d+))?$/;
 			$count = '>0' if $count eq '';
@@ -3981,12 +4547,12 @@ sub checkSelfCondition {
 	}
 
 	if ($config{$prefix."_inCart"}) {
+		return 0 if (!$char->cart->isReady());
 		foreach my $input (split / *, */, $config{$prefix."_inCart"}) {
 			my ($item,$count) = $input =~ /(.*?)(?:\s+([><]=? *\d+))?$/;
 			$count = '>0' if $count eq '';
-			my $iX = findIndexString_lc($cart{inventory}, "name", $item);
- 			my $item = $cart{inventory}[$iX];
-			return 0 if !inRange(!defined $iX ? 0 : $item->{amount}, $count);
+			my $item = $char->cart->getByName($item);
+			return 0 if !inRange(!$item ? 0 : $item->{amount}, $count);
 		}
 	}
 
@@ -4047,9 +4613,48 @@ sub checkSelfCondition {
 		return 0 if ($field->getBlock($pos->{x}, $pos->{y}) != Field::WALKABLE_WATER);
 	}
 	
-	if (defined $config{$prefix.'_devotees'}) {
+	if ($config{$prefix.'_devotees'}) {
 		return 0 unless inRange(scalar keys %{$devotionList->{$accountID}{targetIDs}}, $config{$prefix.'_devotees'});
 	}
+	
+	if ($config{$prefix."_whenPartyMembersNear"}) {
+		# Short circuit if there's not enough players nearby, party members or not
+		# +1 account for self
+		return 0 unless inRange(scalar @{$playersList} + 1, $config{$prefix."_whenPartyMembersNear"});
+
+		# Short circuit if there's not enough players in our party
+		return 0 unless inRange(scalar @partyUsersID, $config{$prefix."_whenPartyMembersNear"});
+
+		my $dist;
+		my $amountInRange = 1; # account for self
+		
+		if ($config{$prefix."_whenPartyMembersNearDist"}) {
+			$dist = $config{$prefix."_whenPartyMembersNearDist"};
+		} else {
+			$dist = "< ";
+			$dist .= ($config{removeActorWithDistance} || $config{clientSight} || 15);
+		}
+
+		foreach my $player (@{$playersList}) {
+			next unless (exists $char->{party}{users}{$player->{ID}} && $char->{party}{users}{$player->{ID}});
+			next unless inRange(distance(calcPosition($char), calcPosition($player)), $dist);
+			 
+			++$amountInRange;
+		}
+
+		return 0 unless inRange($amountInRange, $config{$prefix."_whenPartyMembersNear"});
+	}
+	
+	if ($config{$prefix . "_inParty"}) {
+		return 0 unless $char->{party}{joined};
+	}
+	
+	if ($config{$prefix . "_notInParty"}) {
+		return 0 if $char->{party}{joined};
+	}
+	
+	return 0 if ($config{$prefix . "_maxBase"} =~ /^\d{1,}$/ && $char->{lv} > $config{$prefix . "_maxBase"});
+	return 0 if ($config{$prefix . "_minBase"} =~ /^\d{1,}$/ && $char->{lv} < $config{$prefix . "_minBase"});
 
 	my %hookArgs;
 	$hookArgs{prefix} = $prefix;
@@ -4091,7 +4696,7 @@ sub checkPlayerCondition {
 				return 0 if (!inRange($char->{hp}, $config{$prefix."_hp"}));
 			}
 		# Target is Actor::Player in our Party
-		} elsif ($char->{party} && $char->{party}{users}{$id}) {
+		} elsif ($char->{party}{joined} && $char->{party}{users}{$id}) {
 			# Fix Heal when Target HP is not set yet.
 			# return 0 if (!defined($player->{hp}) || $player->{hp} == 0);
 			return 0 if ($char->{party}{users}{$id}{hp} == 0);
@@ -4134,7 +4739,8 @@ sub checkPlayerCondition {
 	if ($config{$prefix . "_defendMonsters"}) {
 		my $exists;
 		foreach (ai_getMonstersAttacking($id)) {
-			if (existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}{name})) {
+			if (existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}{name}) || 
+				existsInList($config{$prefix . "_defendMonsters"}, $monsters{$_}{nameID})) {
 				$exists = 1;
 				last;
 			}
@@ -4145,7 +4751,8 @@ sub checkPlayerCondition {
 	if ($config{$prefix . "_monsters"}) {
 		my $exists;
 		foreach (ai_getPlayerAggressives($id)) {
-			if (existsInList($config{$prefix . "_monsters"}, $monsters{$_}{name})) {
+			if (existsInList($config{$prefix . "_monsters"}, $monsters{$_}{name}) ||
+				existsInList($config{$prefix . "_monsters"}, $monsters{$_}{nameID})) {
 				$exists = 1;
 				last;
 			}
@@ -4193,6 +4800,10 @@ sub checkPlayerCondition {
 	if ($config{$prefix."_isNotMyDevotee"}) {
 		return 0 if (defined $devotionList->{$accountID}->{targetIDs}->{$id});
 	}
+	
+	if ($config{$prefix."_spirit"}) {
+		return 0 unless inRange(defined $player->{spirits} ? $player->{spirits} : 0, $config{$prefix . "_spirit"});
+	}
 
 	my %args = (
 		player => $player,
@@ -4209,14 +4820,25 @@ sub checkMonsterCondition {
 	my ($prefix, $monster) = @_;
 
 	if ($config{$prefix . "_hp"}) {
-		return 0 if (!$monster->{hp});
-		if ($config{$prefix . "_hp"} =~ /^(.*)\%$/) {
-			return 0 unless (inRange(($monster->{hp} * 100 / $monster->{hp_max}), $1)); 
+		if($config{$prefix . "_hp"} =~ /(\d+)%$/) {
+			if($monster->{hp} && $monster->{hp_max}) {
+				return 0 unless (inRange(($monster->{hp} * 100 / $monster->{hp_max}), $config{$prefix . "_hp"}));
+			} elsif($monster->{hp_percent}) {
+				return 0 unless (inRange($monster->{hp_percent}, $config{$prefix . "_hp"}));
+			} else {
+				return 0;
+			}
+		} elsif($config{$prefix . "_hp"} =~ /(\d+)$/) {
+			if($monster->{hp} && $monster->{hp_max}) {
+				return 0 unless (inRange($monster->{hp}, $config{$prefix . "_hp"}));
+			} else {
+				return 0;
+			}
 		} else {
-			return 0 unless (inRange($monster->{hp}, $config{$prefix . "_hp"})); 
+			return 0;
 		}
 	}
-	
+
 	if ($config{$prefix . "_timeout"}) { return 0 unless timeOut($ai_v{$prefix . "_time"}{$monster->{ID}}, $config{$prefix . "_timeout"}) }
 
 	if (my $misses = $config{$prefix . "_misses"}) {
@@ -4269,45 +4891,6 @@ sub checkMonsterCondition {
 }
 
 ##
-# findCartItemInit()
-#
-# Resets all "found" flags in the cart to 0.
-sub findCartItemInit {
-	for (@{$cart{inventory}}) {
-		next unless $_ && %{$_};
-		undef $_->{found};
-	}
-}
-
-##
-# findCartItem($name [, $found [, $nounid]])
-#
-# Returns the integer index into $cart{inventory} for the cart item matching
-# the given name, or undef.
-#
-# If an item is found, the "found" value for that item is set to 1. Items
-# cannot be found again until you reset the "found" flags using
-# findCartItemInit(), if $found is true.
-#
-# Unidentified items will not be returned if $nounid is true.
-sub findCartItem {
-	my ($name, $found, $nounid) = @_;
-
-	$name = lc($name);
-	my $index = 0;
-	for (@{$cart{inventory}}) {
-		if (lc($_->{name}) eq $name &&
-		    !($found && $_->{found}) &&
-			!($nounid && !$_->{identified})) {
-			$_->{found} = 1;
-			return $index;
-		}
-		$index++;
-	}
-	return undef;
-}
-
-##
 # makeShop()
 #
 # Returns an array of items to sell. The array can be no larger than the
@@ -4343,19 +4926,24 @@ sub makeShop {
 	my $max_items = $char->{skills}{MC_VENDING}{lv} + 2;
 
 	# Iterate through items to be sold
-	findCartItemInit();
 	shuffleArray(\@{$shop{items}}) if ($config{'shop_random'} eq "2");
+	my %used_items;
 	for my $sale (@{$shop{items}}) {
-		my $index = findCartItem($sale->{name}, 1, 1);
-		next unless defined($index);
+		my $cart_item;
+		for my $item (@{$char->cart}) {
+			next unless $item->{name} eq $sale->{name};
+			next if $used_items{$item->{binID}};
+			$cart_item = $used_items{$item->{binID}} = $item;
+			last;
+		}
+		next unless ($cart_item);
 
 		# Found item to vend
-		my $cart_item = $cart{inventory}[$index];
 		my $amount = $cart_item->{amount};
 
 		my %item;
 		$item{name} = $cart_item->{name};
-		$item{index} = $index;
+		$item{ID} = $cart_item->{ID};
 			if ($sale->{priceMax}) {
 				$item{price} = int(rand($sale->{priceMax} - $sale->{price})) + $sale->{price};
 			} else {
@@ -4385,9 +4973,10 @@ sub openShop {
 	@shopnames = split(/;;/, $shop{title_line});
 	$shop{title} = $shopnames[int rand($#shopnames + 1)];
 	$shop{title} = ($config{shopTitleOversize}) ? $shop{title} : substr($shop{title},0,36);
-	$messageSender->sendOpenShop($shop{title}, \@items);
 	message T("Trying to set up shop...\n"), "vending";
+	$messageSender->sendOpenShop($shop{title}, \@items);
 	$shopstarted = 1;
+	Plugins::callHook ('open_shop', {title => $shop{title}, items => \@items});
 }
 
 sub closeShop {
@@ -4401,7 +4990,120 @@ sub closeShop {
 	$shopstarted = 0;
 	$articles = 0;
 	$timeout{'ai_shop'}{'time'} = time;
+	Plugins::callHook("shop_closed");
 	message T("Shop closed.\n");
+}
+
+sub makeBuyerShop {
+	if ($buyershopstarted) {
+		error T("A shop has already been opened.\n");
+		return;
+	}
+
+	return unless $char;
+
+	my $max_items = 2;
+	my @items = ();
+	
+	if($char->inventory->getByNameID(6377)) {
+		$max_items = 5;
+	}
+
+	# Iterate through items to be sold
+	shuffleArray(\@{$buyer_shop{items}}) if ($config{'buyerShop_random'} eq "2");
+	my %used_items;
+	for my $sale (@{$buyer_shop{items}}) {
+		my $inventory_item;
+		for my $item (@{$char->inventory}) {
+			next unless $item->{name} eq $sale->{name};
+			next if $used_items{$item->{binID}};
+			$inventory_item = $used_items{$item->{binID}} = $item;
+			last;
+		}
+		next unless ($inventory_item);
+
+		my %item;
+		$item{name} = $inventory_item->{name};
+		$item{nameID} = $inventory_item->{nameID};
+			if ($sale->{priceMax}) {
+				$item{price} = int(rand($sale->{priceMax} - $sale->{price})) + $sale->{price};
+			} else {
+				$item{price} = $sale->{price};
+			}
+		$item{amount} = $sale->{amount};
+		push(@items, \%item);
+
+		# We can't buy anymore items
+		last if @items >= $max_items;
+	}
+
+	if (!@items) {
+		error T("There are no items to sell.\n");
+		return;
+	}
+
+	shuffleArray(\@items) if ($config{'buyerShop_random'} eq "1");
+
+	if (!$char->{skills}{ALL_BUYING_STORE}{lv}) { # don't have skill but have the necessary item
+		my $item = $char->inventory->getByNameID(12548);
+		if(!$item) {
+			error T("You don't have the Buying Store skill or Black Market Bulk Buyer Shop License.\n");
+			return;
+		} else {
+			$item->use;
+		}
+	} elsif(!$char->inventory->getByNameID(6377)) { # have skill but don't have the necessary item
+		error T("You don't have Bulk Buyer Shop License.\n");
+		return;
+	} else { # have skill and item
+		my $skill = new Skill(auto => "ALL_BUYING_STORE");
+		$messageSender->sendSkillUse($skill->getIDN(), $skill->getLevel(), $char->{ID});
+	}
+	
+	if (!$buyer_shop{title_line}) {
+		error T("Your buyer shop does not have a title.\n");
+		return;
+	}
+
+	return @items;
+}
+
+sub openBuyerShop {
+	my @items = makeBuyerShop();
+	my @buyershopnames;
+	my $limitZeny = 0;
+	return unless @items;
+	@buyershopnames = split(/;;/, $buyer_shop{title_line});
+	$buyer_shop{title} = $buyershopnames[int rand($#buyershopnames + 1)];
+	$buyer_shop{title} = ($config{buyerShopTitleOversize}) ? $buyer_shop{title} : substr($buyer_shop{title},0,36);
+
+	foreach my $item (@items) {
+		$limitZeny += ($item->{amount} * $item->{price});
+	}
+
+	if($limitZeny > $char->{zeny}) {
+		$limitZeny = $char->{zeny};
+	}
+
+	Plugins::callHook ('buyer_open_shop', {title => $buyer_shop{title}, limitZeny=> $limitZeny, items => \@items});
+	$messageSender->sendBuyBulkOpenShop($limitZeny, 1, $buyer_shop{title}, \@items);
+	
+	message T("Trying to set up buyer shop...\n"), "vending";
+	$buyershopstarted = 1;
+}
+
+sub closeBuyerShop {
+	if (!$buyershopstarted) {
+		error T("A Buyer Shop has not been opened.\n");
+		return;
+	}
+
+	$messageSender->sendCloseBuyShop();
+
+	$buyershopstarted = 0;
+	$timeout{'ai_shop'}{'time'} = time;
+	Plugins::callHook("buyer_shop_closed");
+	message T("Buyer Shop closed.\n");
 }
 
 ##
@@ -4447,16 +5149,171 @@ sub MODINIT {
 	OpenKoreMod::initMisc() if (defined(&OpenKoreMod::initMisc));
 }
 
-sub buyingstoreitemdelete {
-	my ($invIndex, $amount) = @_;
+# There are 2 types of clients that receive deletion timestamp 'deleteDate'
+# 0: As when char can be deleted
+# 1: As remaining time
+#    -> kRO 2013 clients
+#    -> idRO since 2016-04-06
+sub setCharDeleteDate {
+	my ($slot, $deleteDate) = @_;
 
-	my $item = $char->inventory->get($invIndex);
-	if (!$char->{arrow} || ($item && $char->{arrow} != $item->{index})) {
-		message TF("Inventory Item Removed: %s (%d) x %d\n", $item->{name}, $invIndex, $amount), "inventory";
+	return if (!$deleteDate);
+
+	if (!defined $chars[$slot]) {
+		error TF("Invalid char in specified slot %d\n", $slot);
+		return;
 	}
-	$item->{amount} -= $amount;
-	$char->inventory->remove($item) if ($item->{amount} <= 0);
-	$itemChange{$item->{name}} -= $amount;
+
+	if ($masterServer->{charDeleteDateType} == 1) { # New clients receive deleteTime as 'time remaining'
+		$deleteDate = int(time) + $deleteDate;
+	}
+
+	$chars[$slot]{deleteDate} = getFormattedDate($deleteDate);
+	$chars[$slot]{deleteDateTimestamp} = $deleteDate;
+}
+
+sub cancelNpcBuySell {
+	undef $ai_v{'npc_talk'};
+	
+	if ($messageSender->can('sendSellBuyComplete')) {
+		$messageSender->sendSellBuyComplete;
+	}
+}
+
+sub completeNpcSell {
+	my $items = shift;
+	
+	if (@{$items}) {
+		$messageSender->sendSellBulk($items);
+	}
+	
+	undef $ai_v{'npc_talk'};
+	
+	if ($messageSender->can('sendSellBuyComplete')) {
+		$messageSender->sendSellBuyComplete;
+		$messageSender->sendSellBuyComplete;
+	}
+}
+
+sub completeNpcBuy {
+	my $items = shift;
+	
+	if (@{$items}) {
+		$messageSender->sendBuyBulk($items);
+	}
+	
+	undef $ai_v{'npc_talk'};
+		
+	if ($messageSender->can('sendSellBuyComplete')) {
+		$messageSender->sendSellBuyComplete;
+		$messageSender->sendSellBuyComplete;
+	}
+}
+
+sub CharacterLogin {
+	if (charSelectScreen(1) == 1) {
+		$firstLoginMap = 1;
+		$startingzeny = $chars[$config{'char'}]{'zeny'} unless defined $startingzeny;
+		$sentWelcomeMessage = 1;
+	}
+}
+
+sub searchStoreInfo {
+	my ($page) = @_;
+	
+	my $msg =  center(T(" Search Store Result "), 79, '-') ."\n";
+	$msg .= TF("Page: %d/%d\n", $page + 1, scalar(@{$universalCatalog{list}}));
+	$msg .= swrite("@<< @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @>>>>>>>>>>",
+			["#", T("Shop Name"), T("Item"), T("Amount"), T("Price")]);
+	
+	for (my $i = 0; $i < scalar(@{${$universalCatalog{list}}[$page]}); ++$i) {
+		$msg .= swrite("@<< @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @>>>>>>>>>>",
+				[$i, ${$universalCatalog{list}}[$page][$i]{shopName},
+				itemName({
+					nameID => ${$universalCatalog{list}}[$page][$i]{nameID},
+					cards => ${$universalCatalog{list}}[$page][$i]{cards_nameID},
+					upgrade => ${$universalCatalog{list}}[$page][$i]{refine}
+				}), ${$universalCatalog{list}}[$page][$i]{amount}, formatNumber(${$universalCatalog{list}}[$page][$i]{price})]);
+	}
+	$msg .= ('-'x79) . "\n";
+	message $msg, "list";
+}
+
+my @base62_dictionary = qw(0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
+my %base62_map = map { $base62_dictionary[$_] => $_ } 0..$#base62_dictionary;
+
+# Convert number to Base62 string
+# [lututui]
+sub toBase62 {
+    my ($k) = @_;
+    my @result;
+
+    return "0" if ($k == 0);
+
+    while ($k != 0) {
+        use integer;
+        unshift (@result, $base62_dictionary[$k % 62]);
+        $k /= 62;
+    }
+
+    return join "", @result;
+}
+
+# Convert Base62 string to number
+# [lututui]
+sub fromBase62 {
+    my ($k) = @_;
+
+    my @arr = split "", $k;
+    my $base10 = 0;
+
+    for (my $i = 0; $i < scalar @arr; ++$i) {
+        $base10 += $base62_map{$arr[$i]} * (62**(scalar(@arr) - $i - 1));
+    }
+
+    return $base10;
+}
+
+# Solve each <ITEML>.*</ITEML> to kore-style item name
+sub solveItemLink {
+	my ($itemlstr) = @_;
+
+	# Item ID as minimum requirement
+	if (!($itemlstr =~ /^([\d\w]+)(.*)/)) {
+		return $itemlstr;
+	}
+
+	my ($itemstr, $infostr) = ($1, $2);
+	my ($loc, $showslots, $id) = $itemstr =~ /([\d\w]{5})(\d)([\d\w]+)/;
+	my ($refine) = $infostr =~ /%([\d\w]+)/;
+	my ($itemtype) = $infostr =~ /&([\d\w]+)/;
+	my $item_info = {
+		nameID => fromBase62($id),
+		upgrade => fromBase62($refine),
+	};
+
+	foreach my $card (map { $_ } $infostr =~ /\(([\d\w]+)/g) {
+		$item_info->{cards} .= pack('v', fromBase62($card));
+	}
+
+	foreach my $opt (map { $_ } $infostr =~ /\*([\d\w\+,]+)/g) {
+		# The Random Option's order from client is type-param-value, itemName needs type-value-param
+		my ($type, $param, $value) = $opt =~ /([a-zA-Z0-9]+)\+([a-zA-Z0-9]+),([a-zA-Z0-9]+)/;
+		$item_info->{options} .= pack 'vvC', ( fromBase62($type), fromBase62($value), fromBase62($param) );
+	}
+
+	return "<".itemName($item_info).">";
+}
+
+# Solve plain message string that contains client's special functions
+sub solveMessage {
+	my ($msg) = @_;
+
+	# <ITEML>.*</ITEML> to readable item name
+	if ($msg =~ /<ITEML>([a-zA-Z0-9\%\&\(\,\+\*]*)<\/ITEML>/) {
+		$msg =~ s/<ITEML>([a-zA-Z0-9\%\&\(\,\+\*]*)<\/ITEML>/solveItemLink($1)/eg;
+	}
+	return $msg;
 }
 
 return 1;

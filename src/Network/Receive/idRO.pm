@@ -14,55 +14,29 @@
 package Network::Receive::idRO;
 
 use strict;
-use base qw(Network::Receive::ServerType0);
-use Globals qw($messageSender %timeout);
-use Log qw(debug);
-use Misc qw(monsterName);
-use Utils qw(timeOut);
+use Network::Receive::ServerType0;
 
-use Time::HiRes qw(time);
+use base qw(Network::Receive::ServerType0);
 
 sub new {
 	my ($class) = @_;
 	my $self = $class->SUPER::new(@_);
+	
 	my %packets = (
-		'006D' => ['character_creation_successful', 'a4 V9 v V2 v14 Z24 C6 v2', [qw(charID exp zeny exp_job lv_job opt1 opt2 option stance manner points_free hp hp_max sp sp_max walk_speed type hair_style weapon lv points_skill lowhead shield tophead midhead hair_color clothes_color name str agi vit int dex luk slot renameflag)]],
-		'0097' => ['private_message', 'v Z24 V Z*', [qw(len privMsgUser flag privMsg)]], # -1
-		'082D' => ['received_characters_info', 'x2 C5 x20', [qw(normal_slot premium_slot billing_slot producible_slot valid_slot)]],
-		'099D' => ['received_characters', 'x2 a*', [qw(charInfo)]],
+		'0097' => ['private_message', 'v Z24 V Z*', [qw(len privMsgUser flag privMsg)]],
+	);
+	
+	$self->{packet_list}{$_} = $packets{$_} for keys %packets;
+	
+	my %handlers = qw(
+		received_characters 099D
+		received_characters_info 082D
+		sync_received_characters 09A0
 	);
 
-	foreach my $switch (keys %packets) {
-		$self->{packet_list}{$switch} = $packets{$switch};
-	}
-
+	$self->{packet_lut}{$_} = $handlers{$_} for keys %handlers;
+	
 	return $self;
 }
-
-sub received_characters_info {
-	my ($self, $args) = @_;
-
-	Scalar::Util::weaken(my $weak = $self);
-	my $timeout = {timeout => 6, time => time};
-
-	$self->{charSelectTimeoutHook} = Plugins::addHook('Network::serverConnect/special' => sub {
-		if ($weak && timeOut($timeout)) {
-			$weak->received_characters({charInfo => '', RAW_MSG_SIZE => 4});
-		}
-	});
-
-	$self->{charSelectHook} = Plugins::addHook(charSelectScreen => sub {
-		if ($weak) {
-			Plugins::delHook(delete $weak->{charSelectTimeoutHook}) if $weak->{charSelectTimeoutHook};
-		}
-	});
-
-	$timeout{charlogin}{time} = time;
-
-	$self->received_characters($args);
-}
-
-*parse_quest_update_mission_hunt = *Network::Receive::parse_quest_update_mission_hunt_v2;
-*reconstruct_quest_update_mission_hunt = *Network::Receive::reconstruct_quest_update_mission_hunt_v2;
 
 1;
